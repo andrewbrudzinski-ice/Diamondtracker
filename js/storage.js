@@ -8,16 +8,65 @@ export const Store = (()=> {
   let state = null;
   const listeners = new Set();
 
+  /* ---- durable local cache (always on — guarantees offline-first) ---- */
   function _read(){
     try{ return JSON.parse(localStorage.getItem(KEY)) || null }catch(e){ return null }
   }
   function _write(s){
     try{ localStorage.setItem(KEY, JSON.stringify(s)) }catch(e){ console.warn('persist failed',e) }
-    // FUTURE: enqueue for Supabase sync here. Offline-safe by design.
   }
+
+  /* ---- optional remote backend (the Phase B seam) ----
+     localStorage is always the durable cache; a remote is layered ON TOP,
+     never in front, so the app works identically with no network. A remote
+     implements:
+        async pull()        -> persisted state | null   (initial/refresh read)
+        push(state)         -> persist remotely (sync or Promise; fire-and-forget)
+        subscribe(onState)  -> optional; call onState(state) on remote changes,
+                               return an unsubscribe fn
+     Until setRemote() is called, Store is a pure local/offline store and all
+     of get/commit/sub behave exactly as before. */
+  let remote = null;
+  let remoteUnsub = null;
+  function setRemote(backend){
+    if(remoteUnsub){ remoteUnsub(); remoteUnsub=null; }
+    remote = backend || null;
+    if(remote && typeof remote.subscribe==='function'){
+      remoteUnsub = remote.subscribe(applyRemote);
+    }
+    return remote;
+  }
+  function getRemote(){ return remote; }
+  // adopt state pushed from the remote: migrate, cache, notify the UI
+  function applyRemote(incoming){
+    if(!incoming) return;
+    state = migrate(incoming);
+    _write(state);
+    listeners.forEach(f=>f(state));
+  }
+
+  // synchronous, cache-first load → instant offline boot (unchanged contract)
   function load(){ state = migrate(_read() || defaultState()); return state }
+  // async reconciliation with the remote; offline-first (cache already loaded).
+  // No-op (resolves to current state) when no remote is configured.
+  async function hydrate(){
+    if(!remote || typeof remote.pull!=='function') return state;
+    try{
+      const incoming = await remote.pull();
+      if(incoming){ state = migrate(incoming); _write(state); listeners.forEach(f=>f(state)); }
+    }catch(e){ console.warn('remote hydrate failed (staying offline)',e); }
+    return state;
+  }
   function get(){ return state }
-  function commit(){ _write(state); listeners.forEach(f=>f(state)) }
+  function commit(){
+    _write(state);                          // durable local write-through (offline-safe)
+    listeners.forEach(f=>f(state));          // synchronous UI update
+    if(remote && typeof remote.push==='function'){
+      // write-through to the remote; never blocks or breaks the offline path
+      try{ Promise.resolve(remote.push(state)).catch(e=>console.warn('remote push failed (offline?)',e)); }
+      catch(e){ console.warn('remote push failed',e); }
+    }
+  }
   function sub(f){ listeners.add(f); return ()=>listeners.delete(f) }
   function defaultState(){
     const seasonId='s'+Date.now();
@@ -69,7 +118,7 @@ export const Store = (()=> {
     }
     return s;
   }
-  return { load, get, commit, sub };
+  return { load, get, commit, sub, hydrate, setRemote, getRemote };
 })();
 
 /* ============================================================

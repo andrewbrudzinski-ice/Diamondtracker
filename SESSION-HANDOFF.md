@@ -13,12 +13,13 @@
 - **What it is:** a mobile-first, offline-first, **no-framework / no-backend / no-build**
   softball & baseball scorekeeping web app (think a free, self-hosted GameChanger). Pure
   HTML/CSS/vanilla JS; all data in `localStorage`; event-sourced.
-- **Where we are:** **Phase A is DONE and merged to `main`** (PR #1). **Session 1 (ES-module
-  test harness)** and **Session 2 (per-player Runs scored)** are also **DONE** — see §4. The
-  old ~5,000-line single `index.html` is split into `css/styles.css` + ES-module `js/*.js`
-  files; an 88-assertion suite (`npm test`, Node's built-in runner) covers the library modules.
-- **What's next:** Session 3 — make `Store` async-capable (Phase B groundwork), then Phase B
-  (Supabase live-sync), C (accounts/roles/fan page), D (real AI + remaining stats). Details §4.
+- **Where we are:** **Phase A merged to `main`** (PR #1). **Sessions 1 (test harness), 2
+  (per-player Runs), and 3 (async-capable `Store`)** are DONE, plus a **4-round premium UI
+  pass** (home, live scoring, native motion, depth) — see §4. A 95-assertion suite
+  (`npm test`, Node's built-in runner) covers the library modules incl. the new Store seam.
+- **What's next:** Phase B — Supabase live game sync. The `Store` seam is ready: implement a
+  remote backend (`pull`/`push`/`subscribe`) and plug it in via `Store.setRemote(...)`; call
+  `Store.hydrate()` after boot. Then C (accounts/roles/fan page), D (real AI + remaining stats).
 - **How to run:** must be served over HTTP now (ES modules):
   `python3 -m http.server 8000` → open `http://localhost:8000/index.html`.
 - **Golden rules:** keep event-sourcing; keep all persistence behind `Store`; bump `_v` +
@@ -162,12 +163,22 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   including engine run-attribution tests + an Engine→Stats integration test (incl. a
   persist/reload round-trip).
 
-### Session 3 — Phase B groundwork: make `Store` async-capable
-- Refactor `Store` so `get/commit/sub` can sit in front of an **async/remote backend** without
-  the UI noticing — e.g. keep an in-memory + localStorage cache with write-through, and an
-  internal `_backend` interface. **No Supabase yet**; just the seam, fully working offline.
-- **Acceptance:** app behaves identically offline; `Store` exposes a clean place to plug a
-  remote backend; tests green.
+### Session 3 — Phase B groundwork: make `Store` async-capable  ✅ DONE
+- `Store` now layers an optional **remote backend on top of** the localStorage cache (never in
+  front), so the app is identical offline. `get/commit/sub` are unchanged for the UI.
+- New API on `Store`:
+  - `setRemote(backend)` / `getRemote()` — plug in / inspect the remote. Passing `null`
+    detaches (and unsubscribes). A backend implements:
+    `async pull() -> state|null`, `push(state)` (sync or Promise, fire-and-forget), and
+    optional `subscribe(onState) -> unsubscribe` for live remote pushes.
+  - `hydrate()` — async; pulls from the remote, **migrates**, caches, and notifies. No-op
+    (resolves to current state) when no remote is set.
+  - `commit()` — still writes to localStorage + notifies synchronously, then write-through to
+    the remote; a failing/absent remote never breaks the offline path.
+  - remote `subscribe` pushes are routed through `applyRemote` (migrate → cache → notify).
+- **Acceptance met:** offline behavior identical; clean seam for Phase B; suite green (95,
+  incl. 7 new seam tests: write-through, failing-push resilience, hydrate+migrate, subscribe,
+  detach).
 
 ### Session 4 — Phase B: Supabase live game sync (no accounts)
 - Stand up a Supabase project (Postgres + Realtime). Start with **live game sync only**: one
