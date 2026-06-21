@@ -1159,6 +1159,9 @@ button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,i
   font-size:11px;font-weight:700;color:var(--gold);background:rgba(255,201,77,.10);
   border:1px solid rgba(255,201,77,.35);border-radius:20px;padding:6px 12px;transition:transform .08s}
 .ai-regen:active{transform:scale(.95)}
+.recap-card{margin:10px 14px 4px;padding:14px;border-radius:var(--radius);background:var(--panel);
+  border:1px solid var(--line);box-shadow:var(--shadow)}
+.recap-text{font-size:14px;line-height:1.55;color:var(--ink)}
 
 /* ---- Account & roles ---- */
 .acct-card{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);

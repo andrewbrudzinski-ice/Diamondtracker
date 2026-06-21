@@ -45,6 +45,10 @@ python3 -m http.server 8000
 Any static server (or GitHub Pages) works. All data persists in `localStorage` under the key
 `diamondtracker.v1`.
 
+**Installable (PWA):** served over HTTPS (e.g. GitHub Pages) the app ships a `manifest.json` +
+service worker (`sw.js`), so it can be installed to the home screen and launches offline (the
+app shell is cached; data is local already). Bump `CACHE` in `sw.js` to ship a new shell.
+
 ## Live Sync (optional, Phase B)
 
 Share one game across devices in real time via Supabase — fully **opt-in and offline-first**

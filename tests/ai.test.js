@@ -53,6 +53,15 @@ test('mvpPrompt frames a loss', () => {
   assert.match(prompt, /fell 3-7 to Foes/);
 });
 
+test('recapPrompt includes the final and standouts', () => {
+  const { prompt } = AI.recapPrompt({
+    away: 'Aces', home: 'Foes', awayRuns: 7, homeRuns: 5,
+    standouts: 'Pat 3-4, 2 HR; Sam 2-3',
+  });
+  assert.match(prompt, /Aces 7, Foes 5/);
+  assert.match(prompt, /Standouts: Pat 3-4, 2 HR; Sam 2-3/);
+});
+
 test('complete posts to the Claude API with the right model, key and browser header', async () => {
   AI.writeConfig({ enabled: true, apiKey: 'sk-ant-secret' });
   const cap = {};

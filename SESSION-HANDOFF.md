@@ -251,11 +251,18 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   `Stats.fieldLeaders()` ranks by chances (PO+A, errors as tiebreak) → **Defensive Player of
   the Year** in `Awards.seasonAwards`. Tests in `tests/fielding.test.js` (10).
 
-### Still open / nice-to-have (no item left from the original roadmap)
-- Wire the already-built `recapPrompt`/`gameRecap` (Phase D AI) into the box-score/season UI.
+### Post-roadmap extras (shipped)
+- **AI game recaps** wired into the box score ("✨ Write game recap" → `enhanceGameRecap` →
+  `AI.gameRecap`, cached as `recap`/`recapAI`). Season story still TODO.
+- **PWA / installable:** `manifest.json` + `icon.svg` + `sw.js` (cache-first app shell,
+  background refresh, same-origin only) registered at boot. Installs to home screen; launches
+  offline. Bump `CACHE` in `sw.js` for a new shell.
+
+### Still open / nice-to-have
+- **AI season story** (aggregate a season → narrative); **share card** (export box score as an
+  image); **player game logs / splits**; pitch counts; situational (RISP) splits.
 - Phase C follow-ups: in-app role editor, self-service RSVPs, push notifications (needs a
-  server/service-worker). Game-only sync mode (vs whole-state). See the feature ideas the
-  assistant offered in chat for more.
+  server/service-worker). Game-only sync mode (vs whole-state).
 
 ---
 

@@ -570,6 +570,46 @@ function regenerateMvpSummary(gameId){
   if(!AI.isConfigured()){ openAiSheet(); return; }
   enhanceMvpSummary(gameId, g.mvpId);
 }
+
+/* ---- AI game recap (box score) ---- */
+function aiRecapContext(g){
+  const box=Stats.gameBox(g);
+  const top=[...box.sides.away.batters, ...box.sides.home.batters]
+    .filter(b=>b.line.h||b.line.rbi||b.line.hr)
+    .sort((a,b)=>(b.line.h+b.line.rbi+b.line.hr*2)-(a.line.h+a.line.rbi+a.line.hr*2))
+    .slice(0,3)
+    .map(b=>`${b.name} ${b.line.h}-${b.line.ab}${b.line.hr?`, ${b.line.hr} HR`:''}${b.line.rbi?`, ${b.line.rbi} RBI`:''}`);
+  return { away:g.away.name, home:g.home.name,
+           awayRuns:g.totals.away.r, homeRuns:g.totals.home.r,
+           standouts: top.join('; ') };
+}
+async function enhanceGameRecap(gameId){
+  const g=findGameById(gameId); if(!g) return;
+  if(!AI.isConfigured()){ openAiSheet(); return; }
+  g._recapGenerating=true; render();
+  let text=null;
+  try{ text=await AI.gameRecap(aiRecapContext(g)); }
+  catch(e){ console.warn('AI recap failed',e); toast('Recap failed — check AI settings'); }
+  const cur=findGameById(gameId); if(!cur) return;
+  cur._recapGenerating=false;
+  if(text){ cur.recap=text; cur.recapAI=true; }
+  Store.commit(); render();
+}
+// Recap card shown in the box score: the generated recap (if any) + a
+// generate/regenerate button when AI is configured.
+function recapBlock(g){
+  const has=!!g.recap;
+  const gen=g._recapGenerating;
+  if(!has && !AI.isConfigured() && !gen) return '';   // nothing to show, no AI
+  const body = gen
+    ? `<div class="mvp-card-summary gen"><span class="ai-dots"><i></i><i></i><i></i></span> Writing the recap…</div>`
+    : (has?`<div class="recap-text">${esc(g.recap)}${g.recapAI?`<span class="ai-badge" title="Written by Claude">✨ AI</span>`:''}</div>`:'');
+  const btn = (AI.isConfigured() && !gen)
+    ? `<button class="ai-regen" onclick="enhanceGameRecap('${g.id}')">✨ ${has?'Regenerate recap':'Write game recap'}</button>`
+    : '';
+  if(!body && !btn) return '';
+  return `<div class="recap-card">${body}${btn}</div>`;
+}
 function skipMvp(){ Sheet.close(); setView('score'); toast('Game saved'); }
 function findGameById(id){
   const s=Store.get();
@@ -1302,7 +1342,8 @@ function boxScoreHTML(g){
     <div class="box-totals">
       ${boxTotalRow(g.away.name, box.totals.away)}
       ${boxTotalRow(g.home.name, box.totals.home)}
-    </div>`;
+    </div>
+    ${recapBlock(g)}`;
 
   // for each side: batting then pitching
   [['away',g.away.name],['home',g.home.name]].forEach(([side,name])=>{
@@ -2954,6 +2995,7 @@ Object.assign(window, {
   rsvp, renderMore, nav, toggleTheme, exportData, wipe, esc,
   Sync, initSync, openSyncSheet, saveSync, disconnectSync,
   AI, aiMvpContext, enhanceMvpSummary, regenerateMvpSummary, openAiSheet, saveAi, disableAi,
+  aiRecapContext, enhanceGameRecap, recapBlock,
   Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
   fanLink, copyFanLink, bootFan, renderFan, dotRow,
 });
@@ -3003,7 +3045,14 @@ function initPullToRefresh(){
 }
 
 /* ---- boot ---- */
+function registerSW(){
+  if('serviceWorker' in navigator){
+    // offline app shell; harmless if unsupported or on file://
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+}
 (function init(){
+  registerSW();
   try{ const t=localStorage.getItem('dt.theme'); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
   const params=new URLSearchParams(location.search);
   if(params.get('fan')==='1'){ bootFan(params); return; }   // public read-only viewer
