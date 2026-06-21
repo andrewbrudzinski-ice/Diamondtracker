@@ -29,8 +29,10 @@ function setView(v){
   if(v!=='teams'){ teamPageId=null; lineupCtx=null; }
   if(v!=='score'){ pendingPlay=null; smartSuggestion=null; }
   if(v!=='tournaments'){ openTournamentId=null; }
+  _animateView = (v !== activeView);  // animate only on a real tab change
   activeView=v; render();
 }
+let _animateView=false;  // one-shot: play a view-enter transition on next render
 
 /* ---- apply an action with undo snapshot ---- */
 function act(name, meta){
@@ -1835,6 +1837,11 @@ function render(){
     body = renderMore();
   }
   app.innerHTML = body + nav();
+  if(_animateView){
+    // one-shot entrance on tab change (skipped on per-play live re-renders)
+    app.classList.remove('view-enter'); void app.offsetWidth; app.classList.add('view-enter');
+    _animateView=false;
+  }
   if(activeView==='teams' && lineupCtx) initLineupDnD();
 }
 
@@ -1851,8 +1858,12 @@ function renderHome(){
 
   return `
   ${appbar()}
-  <div class="scroll stagger">
+  <div class="scroll" data-refresh="home">
+    ${scoresRail()}
+    <div class="stagger">
     ${heroCard()}
+
+    ${spotlightCard()}
 
     ${(()=>{ const up=Schedule.upcoming().slice(0,2);
       return up.length?`
@@ -1876,28 +1887,71 @@ function renderHome(){
         </div>`).join('')}
     </div>`:''}
 
-    ${results.length?`
-    <div class="sec"><h3>Recent Results</h3><span class="more" onclick="setView('history')">Archive</span></div>
-    <div class="standings">
-      ${results.map(g=>{
-        const aw=g.totals.away.r, hw=g.totals.home.r;
-        const aWin=aw>hw, hWin=hw>aw;
-        const ac=teamColor(g.away.name), hc=teamColor(g.home.name);
-        return `<div class="result-row">
-          <div class="teams">
-            <div class="ln ${aWin?'w':'l'}"><span class="crest-xs">${Crest.team(g.away.name,ac,20)}</span>
-              <span class="tn">${esc(g.away.name)}</span><span class="sc">${aw}</span></div>
-            <div class="ln ${hWin?'w':'l'}"><span class="crest-xs">${Crest.team(g.home.name,hc,20)}</span>
-              <span class="tn">${esc(g.home.name)}</span><span class="sc">${hw}</span></div>
-          </div>
-          <span class="when">${new Date(g.created).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>
-        </div>`;
-      }).join('')}
-    </div>`:''}
-
     ${!standings.length && !results.length ? firstRunCard() : ''}
     <div style="height:20px"></div>
+    </div>
   </div>`;
+}
+
+/* ESPN-style horizontal scores strip: the live game (if any) + recent
+   finals as compact, swipeable, tappable chips. */
+function scoresRail(){
+  const s=Store.get();
+  const games=[];
+  if(s.game) games.push({g:s.game, live:!s.game.final});
+  Standings.recentResults(8).forEach(g=>{ if(!s.game || g.id!==s.game.id) games.push({g, live:false}); });
+  if(games.length<2) return '';           // nothing worth a strip yet
+  const chip=({g,live})=>{
+    const aw=g.totals.away.r, hw=g.totals.home.r;
+    const ac=teamColor(g.away.name), hc=teamColor(g.home.name);
+    const aWin=!live&&aw>hw, hWin=!live&&hw>aw;
+    const status=live
+      ? `<div class="sc-status live"><span class="live-dot"></span>${g.half==='top'?'TOP':'BOT'} ${ord(g.inning)}</div>`
+      : `<div class="sc-status">${new Date(g.created).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>`;
+    const tap = live ? `setView('score')` : `openBoxScore(findGameById('${g.id}'))`;
+    return `<div class="score-chip" onclick="${tap}">
+      ${status}
+      <div class="sc-line ${aWin?'win':(!live&&hWin?'lose':'')}">
+        <span class="crest-xs">${Crest.team(g.away.name,ac,18)}</span>
+        <span class="nm">${esc(g.away.name)}</span><span class="rn">${aw}</span></div>
+      <div class="sc-line ${hWin?'win':(!live&&aWin?'lose':'')}">
+        <span class="crest-xs">${Crest.team(g.home.name,hc,18)}</span>
+        <span class="nm">${esc(g.home.name)}</span><span class="rn">${hw}</span></div>
+    </div>`;
+  };
+  return `<div class="score-rail">${games.slice(0,8).map(chip).join('')}</div>`;
+}
+
+/* Featured player spotlight — the hottest bat in the league. */
+function spotlightCard(){
+  const rows=Stats.leaders('ops',{minAB:5});
+  let pick=rows[0];
+  if(!pick){ const hr=Stats.leaders('hr',{}); pick=hr[0]; }   // fallback before AB volume
+  if(!pick) return '';
+  const r=Stats.resolve(pick.id); if(!r) return '';
+  const b=pick.b;
+  const color=r.team.color;
+  const fmt3=v=>(v>=1?v.toFixed(3):('.'+Math.round(v*1000).toString().padStart(3,'0')));
+  const stat=(v,l)=>`<div class="sl-stat"><b>${v}</b><small>${l}</small></div>`;
+  return `<div class="sec"><h3>Player Spotlight</h3></div>
+    <div class="spotlight" onclick="openPlayerCard('${r.team.id}','${pick.id}')">
+      <div class="sl-bg" style="background:linear-gradient(135deg,${color},${Crest.shade(color,-.55)})"></div>
+      <div class="field-lines"></div>
+      <div class="sl-inner">
+        <span class="avatar sl-av">${Crest.player(r.player.name,r.player.num,color,true)}</span>
+        <div class="sl-meta">
+          <div class="sl-tag">🔥 In Form</div>
+          <div class="sl-name">${esc(r.player.name)}</div>
+          <div class="sl-team">${esc(r.team.name)}${r.player.num?` · #${r.player.num}`:''}</div>
+        </div>
+      </div>
+      <div class="sl-stats">
+        ${stat(fmt3(Stats.avg(b)),'AVG')}
+        ${stat(b.hr,'HR')}
+        ${stat(b.rbi,'RBI')}
+        ${stat(fmt3(Stats.ops(b)),'OPS')}
+      </div>
+    </div>`;
 }
 
 function appbar(){
@@ -2014,7 +2068,7 @@ function computeLeaders(){
 }
 function leaderCard(l){
   if(l.type==='player'){
-    return `<div class="leader-card" onclick="openPlayerCard('${l.teamId}','${l.pid}')">
+    return `<div class="leader-card" style="--lc:${l.color}" onclick="openPlayerCard('${l.teamId}','${l.pid}')">
       <div class="cat">${l.cat}</div>
       <div class="who">
         <span class="avatar">${Crest.player(l.name,l.num,l.color,false)}</span>
@@ -2023,7 +2077,7 @@ function leaderCard(l){
       <div class="stat">${l.stat}${l.unit?`<small>${l.unit}</small>`:''}</div>
     </div>`;
   }
-  return `<div class="leader-card" onclick="openTeamPageByName('${escAttr(l.name)}')">
+  return `<div class="leader-card" style="--lc:${l.color}" onclick="openTeamPageByName('${escAttr(l.name)}')">
     <div class="cat">${l.cat}</div>
     <div class="who">
       <span class="avatar">${Crest.team(l.name,l.color,38)}</span>

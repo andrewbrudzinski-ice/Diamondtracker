@@ -917,3 +917,82 @@ input.in,select.in{width:100%;margin-top:6px;background:var(--bg);border:1px sol
 .mr-name{flex:1;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mr-score{width:70px;height:48px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);
   text-align:center;font-family:var(--font-num);font-size:22px;font-weight:800;color:var(--ink)}
+
+/* ============================================================
+   ROUND 1 — Home moment + native motion
+   Ambient background, ESPN-style scores rail, player spotlight,
+   view transitions, and section/leader refinements. Additive.
+   ============================================================ */
+
+/* ---- Ambient aurora: slow drifting color mesh behind content ---- */
+.aurora{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.aurora::before,.aurora::after{content:"";position:absolute;border-radius:50%;
+  filter:blur(80px);opacity:.55;mix-blend-mode:screen;will-change:transform}
+.aurora::before{width:62vmax;height:62vmax;top:-22vmax;left:-12vmax;
+  background:radial-gradient(circle,rgba(255,107,53,.30),transparent 62%);
+  animation:auroraA 28s ease-in-out infinite alternate}
+.aurora::after{width:56vmax;height:56vmax;bottom:-20vmax;right:-14vmax;
+  background:radial-gradient(circle,rgba(77,159,255,.24),transparent 62%);
+  animation:auroraB 34s ease-in-out infinite alternate}
+@keyframes auroraA{from{transform:translate(0,0) scale(1)}to{transform:translate(13vmax,9vmax) scale(1.18)}}
+@keyframes auroraB{from{transform:translate(0,0) scale(1.06)}to{transform:translate(-11vmax,-7vmax) scale(1)}}
+[data-theme="light"] .aurora{opacity:.7}
+[data-theme="light"] .aurora::before{opacity:.4}
+[data-theme="light"] .aurora::after{opacity:.35}
+
+/* ---- View-enter transition (one-shot on tab change) ---- */
+.app.view-enter{animation:viewEnter .32s var(--ease-out)}
+@keyframes viewEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ---- Section header accent tick ---- */
+.sec h3{position:relative;padding-left:11px}
+.sec h3::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+  width:3px;height:13px;border-radius:2px;background:linear-gradient(var(--clay),var(--clay-deep))}
+
+/* ---- ESPN-style scores rail ---- */
+.score-rail{display:flex;gap:10px;padding:10px 14px 4px;overflow-x:auto;
+  scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.score-rail::-webkit-scrollbar{display:none}
+.score-rail{scrollbar-width:none}
+.score-chip{scroll-snap-align:start;flex:0 0 auto;min-width:142px;background:var(--panel);
+  border:1px solid var(--line);border-radius:16px;padding:11px 13px;box-shadow:var(--shadow);
+  transition:transform .08s}
+.score-chip:active{transform:scale(.97)}
+.sc-status{font-size:9px;letter-spacing:1px;font-weight:800;text-transform:uppercase;
+  color:var(--ink-dim);display:flex;align-items:center;gap:5px;margin-bottom:8px}
+.sc-status.live{color:var(--out)}
+.sc-status .live-dot{width:6px;height:6px;border-radius:50%;background:var(--out);animation:ring 1.4s infinite}
+.sc-line{display:flex;align-items:center;gap:7px;font-size:13px}
+.sc-line+.sc-line{margin-top:6px}
+.sc-line .crest-xs{width:18px;height:20px;flex:0 0 auto}
+.sc-line .nm{flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sc-line .rn{font-family:var(--font-num);font-weight:800;font-size:15px}
+.sc-line.win .rn{color:var(--clay)}
+.sc-line.lose{color:var(--ink-dim)}
+
+/* ---- Leader card team-color accent ---- */
+.leader-card{border-top:3px solid var(--lc,var(--clay))}
+
+/* ---- Player spotlight (home centerpiece) ---- */
+.spotlight{position:relative;margin:4px 14px 4px;border-radius:var(--radius-lg);overflow:hidden;
+  border:1px solid var(--line);box-shadow:var(--shadow-lg);cursor:pointer;transition:transform .1s}
+.spotlight:active{transform:scale(.99)}
+.spotlight .sl-bg{position:absolute;inset:0;z-index:0}
+.spotlight .sl-bg::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 30%,rgba(10,13,20,.55) 100%)}
+.spotlight .field-lines{position:absolute;inset:0;z-index:1;opacity:.12;
+  background-image:repeating-linear-gradient(120deg,transparent 0 42px,rgba(255,255,255,.5) 42px 44px)}
+.spotlight .sl-inner{position:relative;z-index:2;display:flex;align-items:center;gap:16px;padding:18px 18px 10px}
+.spotlight .sl-av{width:84px;height:84px;flex:0 0 auto;border:2px solid rgba(255,255,255,.3)}
+.spotlight .sl-meta{flex:1;min-width:0;color:#fff}
+.spotlight .sl-tag{font-size:10px;letter-spacing:1.5px;font-weight:800;text-transform:uppercase;color:var(--gold)}
+.spotlight .sl-name{font-family:var(--font-display);font-weight:700;text-transform:uppercase;
+  font-size:24px;line-height:1;letter-spacing:.5px;margin:5px 0 4px;text-shadow:0 2px 10px rgba(0,0,0,.5);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spotlight .sl-team{font-family:var(--font-num);font-size:12px;opacity:.9;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spotlight .sl-stats{position:relative;z-index:2;display:grid;grid-template-columns:repeat(4,1fr);
+  gap:1px;background:rgba(255,255,255,.12);border-top:1px solid rgba(255,255,255,.12)}
+.spotlight .sl-stat{background:var(--panel);padding:12px 4px;text-align:center}
+.spotlight .sl-stat b{font-family:var(--font-num);font-size:22px;font-weight:800;letter-spacing:-.5px;display:block;line-height:1}
+.spotlight .sl-stat small{font-size:9px;letter-spacing:1px;color:var(--ink-dim);font-weight:700;margin-top:3px;display:block}
