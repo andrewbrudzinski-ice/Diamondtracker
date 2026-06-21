@@ -1610,6 +1610,22 @@ function openPlayerCard(teamId,pid){
       </div>`).join('')}
     </div>` : '';
 
+  // recent game log (tap a row to open that game's box score)
+  const log=Stats.gameLog(pid,{limit:10});
+  const logBlock = log.length ? `
+    <div class="sec" style="padding:18px 18px 6px"><h3>Game Log</h3></div>
+    <div class="gamelog">
+      <div class="gl-row gl-head"><span class="gl-date">Date</span><span class="gl-opp">Opp</span>
+        <span>AB</span><span>H</span><span>HR</span><span>RBI</span></div>
+      ${log.map(e=>{ const b=e.bat||{ab:0,h:0,hr:0,rbi:0};
+        const d=new Date(e.created).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+        return `<div class="gl-row" onclick="Sheet.close();openBoxScore(findGameById('${e.gameId}'))">
+          <span class="gl-date">${d}</span>
+          <span class="gl-opp"><span class="gl-res ${e.result==='W'?'w':e.result==='L'?'l':''}">${e.result}</span> ${esc(e.opp)}</span>
+          <span>${b.ab}</span><span>${b.h}</span><span>${b.hr}</span><span>${b.rbi}</span>
+        </div>`; }).join('')}
+    </div>` : '';
+
   const spray=Stats.sprayData({playerId:pid});
   const sprayBlock = spray.length ? `
     <div class="sec" style="padding:18px 18px 6px"><h3>Spray Chart · ${spray.length} balls in play</h3></div>
@@ -1638,6 +1654,7 @@ function openPlayerCard(teamId,pid){
         ${statTable}
         ${pitchTable}
         ${bdBlock}
+        ${logBlock}
         ${sprayBlock}
         <div style="padding:14px 18px 22px">
           <button class="cta" onclick="openPlayerSheet('${teamId}','${pid}')">Edit Player</button>

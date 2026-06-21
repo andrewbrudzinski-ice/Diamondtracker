@@ -182,6 +182,41 @@ test('gameBox surfaces per-player runs scored', () => {
   assert.equal(lead.line.r, 1);
 });
 
+test('gameLog returns per-game lines newest-first with opponent and result', () => {
+  seedState({
+    teams: [F.team({ players: [{ id: 'p1', name: 'Pat' }] })],
+    history: [
+      F.game({ id: 'g1', created: 100, away: 'Aces', home: 'Foes', awayRuns: 5, homeRuns: 2,
+        events: [F.homer({ batterId: 'p1', side: 'away', rbi: 1 })] }),
+      F.game({ id: 'g2', created: 200, away: 'Foes', home: 'Aces', awayRuns: 9, homeRuns: 3,
+        events: [F.single({ batterId: 'p1', side: 'home' }), F.out({ batterId: 'p1', side: 'home' })] }),
+      F.game({ id: 'g3', created: 150, away: 'X', home: 'Y',  // p1 didn't play
+        events: [F.single({ batterId: 'other', side: 'away' })] }),
+    ],
+  });
+  const log = Stats.gameLog('p1', { limit: 10 });
+  assert.equal(log.length, 2, 'only games p1 appeared in');
+  assert.equal(log[0].gameId, 'g2', 'newest first');
+  assert.equal(log[0].opp, 'Foes');         // p1 was home (Aces) in g2
+  assert.equal(log[0].result, 'L');         // Aces 3, Foes 9
+  assert.equal(log[0].bat.h, 1);
+  assert.equal(log[1].gameId, 'g1');
+  assert.equal(log[1].result, 'W');         // Aces 5, Foes 2 (p1 away)
+  assert.equal(log[1].bat.hr, 1);
+});
+
+test('gameLog respects the limit', () => {
+  const events = [F.single({ batterId: 'p1', side: 'away' })];
+  seedState({
+    teams: [F.team({ players: [{ id: 'p1', name: 'Pat' }] })],
+    history: [
+      F.game({ id: 'a', created: 1, events }), F.game({ id: 'b', created: 2, events }),
+      F.game({ id: 'c', created: 3, events }),
+    ],
+  });
+  assert.equal(Stats.gameLog('p1', { limit: 2 }).length, 2);
+});
+
 test('milestones surface achieved career marks', () => {
   const events = [];
   for (let i = 0; i < 5; i++) events.push(F.homer({ batterId: 'p1', side: 'away' }));
