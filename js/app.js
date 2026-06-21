@@ -54,7 +54,7 @@ function act(name, meta){
   navigator.vibrate && navigator.vibrate(name==='homer'?[10,40,20]:8);
   // celebrate scoring plays
   if(name==='homer'){ fxHomeRun(); }
-  else if(runsAfter>runsBefore){ fxScorePop(); }
+  else if(runsAfter>runsBefore){ fxScorePop(); fxRuns(runsAfter-runsBefore); }
 }
 
 /* ---- Interactive play builder: arm a play, tap field to set location ---- */
@@ -409,6 +409,15 @@ function fxHomeRun(){
   setTimeout(()=>host.remove(),1500);
   fxScorePop();
 }
+// floating "+N RUN" celebration pill for any scoring play
+function fxRuns(n){
+  if(!(n>0)) return;
+  const host=document.createElement('div');
+  host.className='fx-overlay';
+  host.innerHTML=`<div class="fx-run">+${n} RUN${n>1?'S':''}</div>`;
+  document.body.appendChild(host);
+  setTimeout(()=>host.remove(),1100);
+}
 
 function undo(){
   const g=Store.get().game;
@@ -745,29 +754,32 @@ function renderScore(g){
   const ballDots = dots(3,'',g.balls);
   const strikeDots = dots(2,'',g.strikes);
   const outDots = dots(2,'out',g.outs);
+  const aw=g.totals.away.r, hw=g.totals.home.r;
+  const batColor=teamColor(g[bt].name);
 
   return `
   <div class="board">
     <div class="board-row">
-      <div class="team-cell away">
+      <div class="team-cell away ${g.half==='top'?'batting':''}">
         <div class="tc-line">
           <span class="board-crest">${Crest.team(g.away.name, teamColor(g.away.name), 26)}</span>
           <div class="team-name ${g.half==='top'?'batting':''}">${esc(g.away.name)}</div>
         </div>
-        <div class="team-score">${g.totals.away.r}</div>
+        <div class="team-score ${aw>hw?'lead':''}">${aw}</div>
       </div>
       <div class="center-cell">
         <div class="inning"><span class="ord">${g.inning}</span><sup>${ord(g.inning).replace(/\d+/,'')}</sup></div>
         <div class="half"><span class="arrow">${g.half==='top'?'▲':'▼'}</span></div>
       </div>
-      <div class="team-cell home">
+      <div class="team-cell home ${g.half==='bottom'?'batting':''}">
         <div class="tc-line">
           <span class="board-crest">${Crest.team(g.home.name, teamColor(g.home.name), 26)}</span>
           <div class="team-name ${g.half==='bottom'?'batting':''}">${esc(g.home.name)}</div>
         </div>
-        <div class="team-score">${g.totals.home.r}</div>
+        <div class="team-score ${hw>aw?'lead':''}">${hw}</div>
       </div>
     </div>
+    <div class="board-pulse"></div>
   </div>
 
   <div class="fieldwrap ${pendingPlay?'is-armed':''}" id="fieldwrap">
@@ -783,9 +795,11 @@ function renderScore(g){
     <div class="cgrp"><div class="clbl">S</div><div class="cdots">${strikeDots}</div></div>
     <div class="cgrp"><div class="clbl">O</div><div class="cdots">${outDots}</div></div>
     <div class="cbat">
-      <span class="pill">AT BAT</span>
-      <span class="who">${esc(batter.name)}</span>
-      ${batter.num?`<span class="num">#${batter.num}</span>`:''}
+      <span class="avatar cbat-av">${Crest.player(batter.name, batter.num, batColor, false)}</span>
+      <div class="cbat-info">
+        <span class="pill">AT BAT</span>
+        <span class="who">${esc(batter.name)}${batter.num?` <span class="num">#${batter.num}</span>`:''}</span>
+      </div>
     </div>
   </div>
 
