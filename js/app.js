@@ -189,7 +189,7 @@ function onBaseTap(baseIdx, evt){
   Sheet.open(`
     <div class="sheet-head"><h3>Runner on ${baseName}</h3><button class="x" onclick="Sheet.close()">×</button></div>
     <div class="sheet-body">
-      <div style="font-weight:700;font-size:16px;margin:2px 0 14px">${esc(String(who))}</div>
+      <div style="font-weight:700;font-size:16px;margin:2px 0 14px">${esc(Engine.runnerName(who))}</div>
       <div class="choice" style="grid-template-columns:1fr">
         <button onclick="runnerAdvance(${baseIdx},1)">Advance one base${baseIdx===2?' · SCORE':''}</button>
         ${baseIdx<2?`<button onclick="runnerAdvance(${baseIdx},${3-baseIdx})">Send home · SCORE</button>`:''}
@@ -215,7 +215,7 @@ function runnerOverlay(g){
     pucks+=`<div class="runner-puck" data-base="${i}"
       style="left:${x}%;top:${y}%"
       onpointerdown="startRunnerDrag(event,${i})">
-      <span class="puck-label">${esc(Crest.initials(String(who)))}</span>
+      <span class="puck-label">${esc(Crest.initials(Engine.runnerName(who)))}</span>
     </div>`;
   });
   let zones='';
@@ -286,7 +286,7 @@ function promptRunnerOutcome(fromBase, toBase){
   const dest=DRAG_BASE_NAMES[toBase];
   const scoring = toBase===3;
   Sheet.open(`
-    <div class="sheet-head"><h3>${esc(String(who))} → ${dest}</h3><button class="x" onclick="cancelRunnerDrop()">×</button></div>
+    <div class="sheet-head"><h3>${esc(Engine.runnerName(who))} → ${dest}</h3><button class="x" onclick="cancelRunnerDrop()">×</button></div>
     <div class="sheet-body">
       <p style="color:var(--ink-dim);font-size:13px;margin:0 0 14px">How did the play end?</p>
       <div class="outcome-grid">
@@ -311,16 +311,18 @@ function resolveRunner(fromBase, toBase, outcome){
     const dest=DRAG_BASE_NAMES[toBase];
     if(outcome==='out'){
       g.outs++;
-      g.events.push({type:'out',label:`${who} out at ${dest}`,i:g.inning,half:g.half,ts:Date.now()});
+      g.events.push({type:'out',label:`${Engine.runnerName(who)} out at ${dest}`,i:g.inning,half:g.half,ts:Date.now()});
       if(g.outs>=3){ Engine.endHalfPublic(g); }
     } else {
       if(toBase>=3){ addRunUI(g); }
       else { g.bases[toBase]=who; }
       if(outcome==='error') g.totals[g.half==='top'?'home':'away'].e++;
       const tag = outcome==='error'?' (error)' : outcome==='fc'?' (FC)' : '';
-      g.events.push({type:toBase>=3?'run':'adv',
-        label:`${who} ${toBase>=3?'scores':'to '+dest}${tag}`,
-        i:g.inning,half:g.half,ts:Date.now(),rbi:0});
+      const e={type:toBase>=3?'run':'adv',
+        label:`${Engine.runnerName(who)} ${toBase>=3?'scores':'to '+dest}${tag}`,
+        i:g.inning,half:g.half,ts:Date.now(),rbi:0};
+      if(toBase>=3) e.scored=Engine.scoredInfo([who]);  // attribute the run scored
+      g.events.push(e);
     }
   });
   const verb = outcome==='out'?'Out recorded':(toBase>=3?'Run scored':'Runner advanced');
@@ -337,8 +339,10 @@ function runnerAdvance(baseIdx, n){
     const dest=idx+n;
     if(dest>=3){ runs++; addRunUI(g); }
     else g.bases[dest]=who;
-    g.events.push({type:'adv',label:`Runner to ${['1st','2nd','3rd','home'][Math.min(dest,3)]}`,
-      i:g.inning,half:g.half,ts:Date.now(),rbi:0});
+    const e={type:'adv',label:`Runner to ${['1st','2nd','3rd','home'][Math.min(dest,3)]}`,
+      i:g.inning,half:g.half,ts:Date.now(),rbi:0};
+    if(dest>=3) e.scored=Engine.scoredInfo([who]);  // attribute the run scored
+    g.events.push(e);
   });
   toast('Runner advanced');
 }
@@ -348,7 +352,9 @@ function runnerSteal(baseIdx){
     const who=g.bases[baseIdx];
     if(baseIdx===2){ g.bases[2]=null; addRunUI(g); }
     else { g.bases[baseIdx+1]=who; g.bases[baseIdx]=null; }
-    g.events.push({type:'sb',label:'Stolen Base',i:g.inning,half:g.half,ts:Date.now()});
+    const e={type:'sb',label:'Stolen Base',i:g.inning,half:g.half,ts:Date.now()};
+    if(baseIdx===2) e.scored=Engine.scoredInfo([who]);  // steal of home scores
+    g.events.push(e);
   });
   toast('Stolen base');
 }
@@ -1231,7 +1237,7 @@ function boxScoreHTML(g){
             const sb=Stats.playerBatting(p.id,true);
             return `<div class="bx-row">
               <span class="bx-name">${esc(p.name)}${p.num?` <i>#${p.num}</i>`:''}</span>
-              <span>${b.ab}</span><span>${rbiRunsApprox(g,p.id)}</span><span>${b.h}</span>
+              <span>${b.ab}</span><span>${b.r}</span><span>${b.h}</span>
               <span>${b.rbi}</span><span>${b.bb}</span><span>${b.k}</span><span>${fmt3(Stats.avg(sb))}</span>
             </div>`;}).join('')}
         </div>`;
@@ -1263,10 +1269,6 @@ function boxTotalRow(name,t){
     <span class="bxt-cell"><b>${t.lob}</b><i>LOB</i></span>
   </div>`;
 }
-// runs scored per player isn't individually tracked yet; show RBI-derived dash
-function rbiRunsApprox(g,pid){ return '–'; }
-
-
 /* ============================================================
    TEAMS VIEW
    ============================================================ */
@@ -2551,7 +2553,7 @@ Object.assign(window, {
   teamSelectOptions, openSetup, onRulePreset, ruleSummaryText, onTeamPick, applyLineup, startGame, openRulesInfo, resolveRoster, pickPitcher,
   parseRoster, diamondSVG, renderScore, renderBook, abRow, hasMovement, lineScore, statsMode, statsSeasonId, BAT_CATS,
   PITCH_CATS, fmtStatVal, renderStats, setStatsMode, setStatsSeason, renderAwards, leaderboardCard, openLeaderList, openSeasonManager, createSeason,
-  activateSeason, renderHistory, reviewGame, reviewGameObj, renderBookStatic, openBoxScore, boxScoreHTML, boxTotalRow, rbiRunsApprox, openTeamId,
+  activateSeason, renderHistory, reviewGame, reviewGameObj, renderBookStatic, openBoxScore, boxScoreHTML, boxTotalRow, openTeamId,
   lineupCtx, teamPageId, renderTeams, teamRowCard, posRank, openTeamPage, openTeamPageByName, closeTeamPage, renderTeamPage, playerCard,
   posName, openPlayerCard, statCell, rateCell, TEAM_COLORS, openTeamSheet, logoPreviewHTML, onLogoPick, clearLogo, pickColor,
   saveTeam, deleteTeam, openPlayerSheet, pickHand, savePlayer, deletePlayer, openLineupPicker, newLineup, editLineup, deleteLineup,

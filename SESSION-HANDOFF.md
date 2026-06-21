@@ -13,11 +13,12 @@
 - **What it is:** a mobile-first, offline-first, **no-framework / no-backend / no-build**
   softball & baseball scorekeeping web app (think a free, self-hosted GameChanger). Pure
   HTML/CSS/vanilla JS; all data in `localStorage`; event-sourced.
-- **Where we are:** **Phase A (multi-file restructure) is DONE and pushed** to branch
-  `claude/vigilant-mayer-k9qsc9`. The old ~5,000-line single `index.html` is now split into
-  `css/styles.css` + ES-module `js/*.js` files. No behavior changed.
-- **What's next:** Phase B (Supabase live-sync), then C (accounts/roles/fan page), then
-  D (real AI + remaining stats). Details in §4 below.
+- **Where we are:** **Phase A is DONE and merged to `main`** (PR #1). **Session 1 (ES-module
+  test harness)** and **Session 2 (per-player Runs scored)** are also **DONE** — see §4. The
+  old ~5,000-line single `index.html` is split into `css/styles.css` + ES-module `js/*.js`
+  files; an 88-assertion suite (`npm test`, Node's built-in runner) covers the library modules.
+- **What's next:** Session 3 — make `Store` async-capable (Phase B groundwork), then Phase B
+  (Supabase live-sync), C (accounts/roles/fan page), D (real AI + remaining stats). Details §4.
 - **How to run:** must be served over HTTP now (ES modules):
   `python3 -m http.server 8000` → open `http://localhost:8000/index.html`.
 - **Golden rules:** keep event-sourcing; keep all persistence behind `Store`; bump `_v` +
@@ -118,8 +119,9 @@ the next session** (see §4, Session 1). The assertions themselves are unchanged
 ## 3. Known debt & open local-feasible work (from HANDOFF.md §3/§5)
 
 Highest-value, no-backend-needed items:
-1. **Per-player Runs scored (R)** — engine tracks *team* runs, not who crossed home, so the box
-   score batter "R" column shows "–". Fixing this completes batting lines. *Top stat fix.*
+1. ~~**Per-player Runs scored (R)**~~ — **DONE (Session 2).** Base occupants now carry identity
+   as `{name,id}`; run-producing events stamp a `scored:[{id,name}]` list, and `Stats` credits
+   each scorer's `r`. Legacy games (no `scored`) show R=0. *Top stat fix — completed.*
 2. **Fielding stats / defensive notation** (6-4-3 DPs, PO/A/E per fielder) — unblocks the
    fielding box + Defensive Player of the Year. (Lowest priority per owner.)
 3. **Rookie of the Year** (needs a per-player "first season" flag).
@@ -138,22 +140,27 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
 > Each session is sized to be shippable on its own: make the change, verify (node --check +
 > serve + click through), commit, push. Keep the guardrails in §5.
 
-### Session 1 — Land Phase A + restore the test harness
-- Open a PR for `claude/vigilant-mayer-k9qsc9` → `main` and merge it (Phase A).
-- **Rewrite the test suite to ES modules**: each `test*.js` should `import { Store, Engine, … }
-  from '../js/…'` instead of regex-extracting `<script>`. Stub `localStorage`/`document`/
-  `navigator` as before. Keep every assertion.
-- **Acceptance:** all suites pass against the split modules; `node --check` clean; screenshots
-  match the pre-split app.
+### Session 1 — Land Phase A + restore the test harness  ✅ DONE
+- Phase A merged to `main` via PR #1.
+- Test suite rewritten as ES modules under `tests/` (Node's built-in runner, zero deps):
+  `tests/helpers/env.js` installs an in-memory `localStorage` and `freshStore()`/`seedState()`;
+  `tests/helpers/fixtures.js` builds teams/games/events. Run with `npm test`.
+- **Result:** all suites pass against the split modules; `node --check` clean. (Browser
+  screenshot pass deferred — no browser in the CI/remote env; verify visually when serving.)
 
-### Session 2 — Per-player Runs scored (highest-value local fix)
-- Extend the engine so each run is attributed to the **runner who scored** (stamp the scoring
-  `playerId` on the run event / in the base-advance resolution).
-- Bump `Store` `_v` (currently 5 → 6) with a **non-destructive migration** (old games keep
-  team totals; batter R can stay "–" for legacy games or be back-derived if feasible).
-- Wire it into `Stats.gameBox` / batting lines; replace the `rbiRunsApprox()` dash.
-- **Acceptance:** box-score "R" column populates for new games; all existing tests still pass;
-  add tests for run attribution.
+### Session 2 — Per-player Runs scored  ✅ DONE
+- **Base occupants now carry identity** as `{name,id}` objects (was a bare name string).
+  `Engine.runnerName()` / `runnerKey()` read either shape (legacy strings tolerated).
+- Run-producing actions (hit/homer/walk-forced/sacFly/stolenBase-of-home/error, plus the UI
+  runner-advance/steal/drag-home paths) stamp **`ev.scored = [{id,name}, …]`** — the runners
+  who crossed the plate (respecting the slow-pitch run cap, lead runners first).
+- `Stats.tallyGame` credits each scorer's `bat[id].r`; box score shows `b.r` (the
+  `rbiRunsApprox()` dash is gone).
+- `Store` `_v` bumped **5 → 6** with a non-destructive migration (normalizes a live game's
+  string bases to objects; finished history games keep string snapshots and show R=0).
+- **Acceptance met:** R column populates for new games; full suite green (88 assertions),
+  including engine run-attribution tests + an Engine→Stats integration test (incl. a
+  persist/reload round-trip).
 
 ### Session 3 — Phase B groundwork: make `Store` async-capable
 - Refactor `Store` so `get/commit/sub` can sit in front of an **async/remote backend** without

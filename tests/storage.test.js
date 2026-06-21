@@ -13,7 +13,7 @@ test('defaultState seeds the expected shape', () => {
   assert.deepEqual(s.tournaments, []);
   assert.equal(s.seasons.length, 1);
   assert.equal(s.currentSeasonId, s.seasons[0].id);
-  assert.equal(s._v, 5);
+  assert.equal(s._v, 6);
 });
 
 test('get() returns the loaded state instance', () => {
@@ -42,14 +42,14 @@ test('sub() notifies listeners on commit and unsubscribes cleanly', () => {
   assert.equal(calls, 1, 'listener should not fire after unsubscribe');
 });
 
-test('migrate: legacy state with no _v upgrades to v5 without data loss', () => {
+test('migrate: legacy state with no _v upgrades to the current version without data loss', () => {
   globalThis.localStorage.clear();
   globalThis.localStorage.setItem('diamondtracker.v1', JSON.stringify({
     game: null,
     history: [{ id: 'g0', created: 100, totals: { away: { r: 1 }, home: { r: 2 } } }],
   }));
   const s = Store.load();
-  assert.equal(s._v, 5);
+  assert.equal(s._v, 6);
   assert.equal(s.history.length, 1, 'existing history preserved');
   assert.ok(Array.isArray(s.teams));
   assert.ok(Array.isArray(s.lineups));
@@ -60,7 +60,7 @@ test('migrate: legacy state with no _v upgrades to v5 without data loss', () => 
   assert.equal(s.history[0].seasonId, s.currentSeasonId);
 });
 
-test('migrate: a v4 state only gains tournaments (idempotent on the rest)', () => {
+test('migrate: a v4 state gains tournaments (idempotent on the rest)', () => {
   globalThis.localStorage.clear();
   const sid = 's123';
   globalThis.localStorage.setItem('diamondtracker.v1', JSON.stringify({
@@ -69,11 +69,26 @@ test('migrate: a v4 state only gains tournaments (idempotent on the rest)', () =
     currentSeasonId: sid, schedule: [{ id: 'ev1' }], _v: 4,
   }));
   const s = Store.load();
-  assert.equal(s._v, 5);
+  assert.equal(s._v, 6);
   assert.deepEqual(s.tournaments, []);
   assert.equal(s.teams[0].name, 'X', 'untouched fields preserved');
   assert.equal(s.schedule[0].id, 'ev1');
   assert.equal(s.currentSeasonId, sid);
+});
+
+test('migrate v6: a live game\'s string bases become {name,id} objects', () => {
+  globalThis.localStorage.clear();
+  globalThis.localStorage.setItem('diamondtracker.v1', JSON.stringify({
+    game: { id: 'g', bases: ['Runner One', null, 'Runner Three'], events: [], totals: {} },
+    history: [], teams: [], lineups: [],
+    seasons: [{ id: 's', created: 1 }], currentSeasonId: 's',
+    schedule: [], tournaments: [], _v: 5,
+  }));
+  const s = Store.load();
+  assert.equal(s._v, 6);
+  assert.deepEqual(s.game.bases[0], { name: 'Runner One', id: null });
+  assert.equal(s.game.bases[1], null);
+  assert.deepEqual(s.game.bases[2], { name: 'Runner Three', id: null });
 });
 
 test('migrate: already-current state is unchanged', () => {
@@ -81,6 +96,6 @@ test('migrate: already-current state is unchanged', () => {
   const sid = fresh.currentSeasonId;
   globalThis.localStorage.setItem('diamondtracker.v1', JSON.stringify(fresh));
   const s = Store.load();
-  assert.equal(s._v, 5);
+  assert.equal(s._v, 6);
   assert.equal(s.currentSeasonId, sid);
 });

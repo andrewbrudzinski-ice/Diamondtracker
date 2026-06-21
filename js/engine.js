@@ -119,27 +119,47 @@ export const Engine = (()=> {
     else { g.half='top'; g.inning++; }
   }
 
-  // advance every runner by `n` bases; runners past 3rd score
+  // ---- runner identity on the bases ----------------------------
+  // A base holds a runner object {name, id} so we can attribute the
+  // run to whoever crosses the plate. Legacy saves (and the manual
+  // run/advance UI) may still hold a bare name string; the helpers
+  // below read either shape so nothing crashes on old data.
+  function runnerObj(g){ const b=currentBatter(g); return {name:b.name, id:b.id||null}; }
+  function runnerName(occ){ return occ==null ? '' : (typeof occ==='string' ? occ : (occ.name||'')); }
+  function runnerKey(occ){ return occ==null ? null : (typeof occ==='string' ? occ : (occ.id||occ.name||null)); }
+  // normalize a list of base occupants into stable {id,name} records
+  // for the event log (survives JSON round-trips; legacy strings ok).
+  function scoredInfo(arr){
+    return (arr||[]).map(o => typeof o==='string'
+      ? {id:null, name:o}
+      : {id:(o&&o.id)||null, name:(o&&o.name)||''});
+  }
+
+  // advance every runner by `n` bases; runners past 3rd score.
+  // Returns {runs, scored} where scored is the list of {id,name} that
+  // actually crossed the plate (respecting any run-limit cap).
   function advanceAll(g, n, batterReaches){
-    let runsIn=0;
+    const scored=[];
     const newBases=[null,null,null];
-    // existing runners
+    // existing runners (lead runners resolved first so a run cap
+    // credits the runners closest to home)
     for(let b=2;b>=0;b--){
       if(g.bases[b]!=null){
         const dest=b+n;
-        if(dest>=3) runsIn++;
+        if(dest>=3) scored.push(g.bases[b]);
         else newBases[dest]=g.bases[b];
       }
     }
     // batter
     if(batterReaches!=null){
       const dest=batterReaches-1; // 1B->index0
-      if(dest>=3) runsIn++;
-      else newBases[dest]=currentBatter(g).name;
+      const bo=runnerObj(g);
+      if(dest>=3) scored.push(bo);
+      else newBases[dest]=bo;
     }
     g.bases=newBases;
-    if(runsIn) addRun(g,runsIn);
-    return runsIn;
+    const added = scored.length ? addRun(g, scored.length) : 0;
+    return {runs:added, scored:scoredInfo(scored.slice(0, added))};
   }
 
   // ---- public actions -------------------------------------------
@@ -159,9 +179,9 @@ export const Engine = (()=> {
     strikeoutBtn(g){ strikeout(g); },
     sacFly(g){
       // scores runner from 3rd if present, counts as out
-      let r=0;
-      if(g.bases[2]!=null){ g.bases[2]=null; addRun(g,1); r=1; }
-      pushEvent(g,{type:'sac',label:'Sac Fly',rbi:r});
+      const scored=[];
+      if(g.bases[2]!=null){ const r3=g.bases[2]; g.bases[2]=null; if(addRun(g,1)) scored.push(r3); }
+      pushEvent(g,{type:'sac',label:'Sac Fly',rbi:scored.length,scored:scoredInfo(scored)});
       g.outs++;
       if(g.outs>=3) endHalf(g); else nextBatter(g);
     },
@@ -170,23 +190,24 @@ export const Engine = (()=> {
       pushEvent(g,{type:'fc',label:"Fielder's Choice"});
       // remove lead runner
       for(let b=2;b>=0;b--){ if(g.bases[b]!=null){ g.bases[b]=null; break; } }
-      g.bases[0]=currentBatter(g).name;
+      g.bases[0]=runnerObj(g);
       g.outs++;
       if(g.outs>=3){ endHalf(g); } else nextBatter(g);
     },
     error(g){
       g.totals[fieldingTeam(g)].e++;
-      advanceAll(g,1,1);
-      pushEvent(g,{type:'error',label:'Reached on Error'});
+      const {scored}=advanceAll(g,1,1);
+      pushEvent(g,{type:'error',label:'Reached on Error',scored});
       nextBatter(g);
     },
     stolenBase(g){
       // advance lead-most single runner one base (simplified)
       for(let b=2;b>=0;b--){
         if(g.bases[b]!=null){
-          if(b===2){ g.bases[2]=null; addRun(g,1); }
-          else { g.bases[b+1]=g.bases[b]; g.bases[b]=null; }
-          pushEvent(g,{type:'sb',label:'Stolen Base'});
+          if(b===2){ const r3=g.bases[2]; g.bases[2]=null; const got=addRun(g,1);
+            pushEvent(g,{type:'sb',label:'Stolen Base',scored:got?scoredInfo([r3]):[]}); }
+          else { g.bases[b+1]=g.bases[b]; g.bases[b]=null;
+            pushEvent(g,{type:'sb',label:'Stolen Base'}); }
           return;
         }
       }
@@ -205,8 +226,8 @@ export const Engine = (()=> {
 
   function hit(g,label,bases,meta){
     g.totals[battingTeam(g)].h++;
-    const rbi = advanceAll(g, bases, bases);
-    pushEvent(g,Object.assign({type:'hit',label,bases,rbi}, meta||{}));
+    const {runs, scored} = advanceAll(g, bases, bases);
+    pushEvent(g,Object.assign({type:'hit',label,bases,rbi:runs,scored}, meta||{}));
     if(runCapReached(g)){ capOut(g); } else nextBatter(g);
   }
   // run cap reached → retire the side (slow-pitch run limit)
@@ -216,15 +237,16 @@ export const Engine = (()=> {
   }
   function walk(g){
     // force advance
+    const scored=[];
     if(g.bases[0]!=null){
       if(g.bases[1]!=null){
-        if(g.bases[2]!=null){ addRun(g,1); }
+        if(g.bases[2]!=null){ if(addRun(g,1)) scored.push(g.bases[2]); }
         g.bases[2]=g.bases[1];
       }
       g.bases[1]=g.bases[0];
     }
-    g.bases[0]=currentBatter(g).name;
-    pushEvent(g,{type:'walk',label:'Walk'});
+    g.bases[0]=runnerObj(g);
+    pushEvent(g,{type:'walk',label:'Walk',scored:scoredInfo(scored)});
     nextBatter(g);
   }
   function strikeout(g){
@@ -265,7 +287,8 @@ export const Engine = (()=> {
   };
 
   return { newGame, currentBatter, battingTeam, fieldingTeam, actions, isMercyOrDone,
-           endHalfPublic:endHalf, defaultRules, runLimitFor, runCapReached, RULE_PRESETS };
+           endHalfPublic:endHalf, defaultRules, runLimitFor, runCapReached, RULE_PRESETS,
+           runnerName, runnerKey, scoredInfo };
 })();
 
 /* ============================================================
