@@ -2574,16 +2574,20 @@ function renderMore(){
 }
 
 function nav(){
-  const tab=(v,ic,lbl)=>`<button class="${activeView===v?'active':''}" onclick="setView('${v}')">
-    <span class="ic">${ic}</span>${lbl}</button>`;
   const live = !!Store.get().game;
-  return `<div class="nav">
-    ${tab('score', live?'⚾':'🏠', live?'LIVE':'HOME')}
-    ${tab('book','📖','BOOK')}
-    ${tab('teams','👥','TEAMS')}
-    ${tab('stats','📊','STATS')}
-    ${tab('more','⚙️','MORE')}
-  </div>`;
+  const tabs=[
+    ['score', live?'⚾':'🏠', live?'LIVE':'HOME'],
+    ['book','📖','BOOK'],
+    ['teams','👥','TEAMS'],
+    ['stats','📊','STATS'],
+    ['more','⚙️','MORE'],
+  ];
+  const idx=tabs.findIndex(t=>t[0]===activeView);
+  // single sliding indicator (hidden when on a view with no matching tab)
+  const ind = idx>=0 ? `<div class="nav-ind" style="left:${idx*(100/tabs.length)}%;width:${100/tabs.length}%"></div>` : '';
+  const btn=([v,ic,lbl])=>`<button class="${activeView===v?'active':''}" onclick="setView('${v}')">
+    <span class="ic">${ic}</span>${lbl}</button>`;
+  return `<div class="nav">${ind}${tabs.map(btn).join('')}</div>`;
 }
 
 /* ---- settings actions ---- */
@@ -2633,10 +2637,55 @@ Object.assign(window, {
   rsvp, renderMore, nav, toggleTheme, exportData, wipe, esc,
 });
 
+/* ---- Pull-to-refresh (touch only) ----
+   Engages only when the touched .scroll is at the top and the user drags
+   down; otherwise native scrolling is untouched. "Refresh" just re-renders
+   (data is local), but the gesture makes the app feel native. */
+function initPullToRefresh(){
+  const THRESH=64, MAX=90;
+  let el=null, startY=0, pull=0, armed=false;
+  const ptr=document.getElementById('ptr');
+  const reset=()=>{
+    if(el){ el.style.transition='transform .25s var(--ease-out)'; el.style.transform='';
+      const e=el; setTimeout(()=>{ if(e) e.style.transition=''; },260); }
+    if(ptr){ ptr.classList.add('snap'); ptr.classList.remove('show','spin'); ptr.style.transform=''; }
+    el=null; pull=0; armed=false;
+  };
+  document.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1){ armed=false; return; }
+    const sc=e.target.closest && e.target.closest('.scroll');
+    if(sc && sc.scrollTop<=0){ el=sc; startY=e.touches[0].clientY; armed=true; pull=0;
+      if(ptr) ptr.classList.remove('snap'); }
+    else armed=false;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!armed||!el) return;
+    const dy=e.touches[0].clientY-startY;
+    if(dy<=0 || el.scrollTop>0){ if(pull>0){ el.style.transform=''; if(ptr) ptr.classList.remove('show'); } pull=0; return; }
+    pull=Math.min(dy*0.5, MAX);
+    e.preventDefault();                                   // suppress native overscroll while pulling
+    el.style.transition=''; el.style.transform=`translateY(${pull}px)`;
+    if(ptr){ ptr.classList.add('show'); ptr.style.transform=`translate(-50%,${pull-22}px)`;
+      ptr.style.opacity=Math.min(1, pull/THRESH); }
+  },{passive:false});
+  const end=()=>{
+    if(!armed||!el){ return; }
+    if(pull>=THRESH){
+      if(ptr){ ptr.classList.add('spin'); ptr.style.transform='translate(-50%,18px)'; ptr.style.opacity=1; }
+      if(el){ el.style.transition='transform .2s var(--ease-out)'; el.style.transform='translateY(40px)'; }
+      navigator.vibrate && navigator.vibrate(10);
+      setTimeout(()=>{ render(); reset(); }, 480);        // render() rebuilds the scroll element
+    } else { reset(); }
+  };
+  document.addEventListener('touchend',end,{passive:true});
+  document.addEventListener('touchcancel',reset,{passive:true});
+}
+
 /* ---- boot ---- */
 (function init(){
   try{ const t=localStorage.getItem('dt.theme'); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
   Store.load();
   Store.sub(()=>render());
   render();
+  initPullToRefresh();
 })();

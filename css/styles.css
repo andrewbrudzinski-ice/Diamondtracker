@@ -1047,3 +1047,38 @@ input.in,select.in{width:100%;margin-top:6px;background:var(--bg);border:1px sol
   25%{opacity:1;transform:translateY(0) scale(1.05)}
   70%{opacity:1;transform:translateY(0) scale(1)}
   100%{opacity:0;transform:translateY(-30px) scale(1)}}
+
+/* ============================================================
+   ROUND 3 — Native motion & micro-interactions
+   ============================================================ */
+/* ---- Sliding bottom-nav indicator ---- */
+.nav button.active::before{display:none}          /* replaced by the sliding bar */
+.nav-ind{position:absolute;top:0;height:3px;pointer-events:none;
+  transition:left .3s var(--ease),width .3s var(--ease)}
+.nav-ind::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:30px;height:3px;border-radius:0 0 3px 3px;background:var(--clay);box-shadow:0 0 10px var(--clay)}
+.nav button .ic{transition:transform .2s var(--ease)}
+.nav button:active .ic{transform:scale(.86)}
+
+/* ---- Pull-to-refresh indicator ---- */
+.scroll{will-change:transform}
+.ptr{position:fixed;top:calc(env(safe-area-inset-top) + 8px);left:50%;width:36px;height:36px;
+  border-radius:50%;background:var(--panel-2);border:1px solid var(--line);box-shadow:var(--shadow);
+  display:flex;align-items:center;justify-content:center;color:var(--clay);font-size:18px;font-weight:800;
+  z-index:40;opacity:0;transform:translate(-50%,-24px);pointer-events:none}
+.ptr.show{opacity:1}
+.ptr.snap{transition:transform .25s var(--ease-out),opacity .2s}
+.ptr .ptr-ic{display:block;line-height:1}
+.ptr.spin .ptr-ic{animation:ptrSpin .7s linear infinite}
+@keyframes ptrSpin{to{transform:rotate(360deg)}}
+
+/* ---- Broader tap feedback on interactive rows ---- */
+.std-row,.result-row,.lb-row,.rec-row,.pl-row,.rsvp-row,
+.mvp-pick,.season-chip,.bench-chip{transition:background .12s,transform .08s}
+.std-row:active,.result-row:active,.lb-row:active,.rec-row:active,.pl-row:active{
+  background:var(--panel-2)}
+.icon-btn:active,.tool:active,.add-btn:active{transform:scale(.94)}
+.cta{transition:transform .08s,background .12s}
+.cta:active{transform:scale(.985)}
+.leader-card{transition:transform .1s,box-shadow .15s}
+.leader-card:active{transform:scale(.97)}
