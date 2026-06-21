@@ -10,6 +10,7 @@ import { Schedule } from './schedule.js';
 import { Tournament } from './tournament.js';
 import { Sync } from './sync.js';
 import { AI } from './ai.js';
+import { Auth } from './auth.js';
 
 const ord = n => n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th');
 const toast = (()=>{ let t; return msg=>{
@@ -36,10 +37,23 @@ function setView(v){
 }
 let _animateView=false;  // one-shot: play a view-enter transition on next render
 
+// When signed in to a shared room as a non-writer (fan/player), block local
+// mutations so the UI matches what RLS enforces server-side. Offline / signed
+// out → never blocks (the local app is fully editable, as before).
+function blockedByRole(){
+  const a=Auth.current();
+  if(a.signedIn && !Auth.canWrite(a.role)){
+    toast(`Read-only — signed in as ${Auth.roleLabel(a.role)}`);
+    return true;
+  }
+  return false;
+}
+
 /* ---- apply an action with undo snapshot ---- */
 function act(name, meta){
   const g = Store.get().game;
   if(!g || g.final) return;
+  if(blockedByRole()) return;
   if(!g._undo) g._undo=[];
   const runsBefore = g.totals.away.r + g.totals.home.r;
   // snapshot (cheap clone of mutable bits)
@@ -375,6 +389,7 @@ function runnerOut(baseIdx){
 // helper: run a base mutation with an undo snapshot + commit + fx
 function withUndo(fn){
   const g=Store.get().game; if(!g||g.final) return;
+  if(blockedByRole()) return;
   if(!g._undo) g._undo=[];
   const runsBefore=g.totals.away.r+g.totals.home.r;
   g._undo.push(JSON.stringify({inning:g.inning,half:g.half,outs:g.outs,balls:g.balls,
@@ -433,6 +448,7 @@ function undo(){
 }
 
 function finishGame(){
+  if(blockedByRole()) return;
   const g=Store.get().game;
   Sheet.open(`
     <div class="sheet-head"><h3>End Game?</h3><button class="x" onclick="Sheet.close()">×</button></div>
@@ -715,6 +731,7 @@ function applyLineup(side,tid){
   rosterInput.value=players.map(p=>`${p.num?p.num+' ':''}${p.name}`).join('\n');
 }
 function startGame(){
+  if(blockedByRole()) return;
   const awayTid=(document.getElementById('awayTeam')||{}).value||'';
   const homeTid=(document.getElementById('homeTeam')||{}).value||'';
   // Resolve rosters WITH player ids when a saved team is selected,
@@ -2610,6 +2627,9 @@ function renderMore(){
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="setView('tournaments')">🏆 Tournaments &amp; Brackets${Tournament.all().length?`<span class="more-badge">${Tournament.all().length}</span>`:''}</button>
     <div class="sec" style="padding:8px 0"><h3>Settings</h3></div>
+    ${(()=>{ const a=Auth.current();
+      return `<button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
+        onclick="openAccountSheet()">👤 Account<span class="sync-pill ${a.signedIn?'live':''}">${a.signedIn?esc(Auth.roleLabel(a.role)).toUpperCase():'SIGN IN'}</span></button>`; })()}
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="openSyncSheet()">📡 Live Sync<span class="sync-pill ${_syncState}">${_syncState==='live'?'LIVE':_syncState==='connecting'?'…':_syncState==='error'?'ERROR':'OFF'}</span></button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
@@ -2649,14 +2669,16 @@ async function initSync(opts={}){
   if(!Sync.isConfigured()){ _syncState='offline'; return; }
   _syncState='connecting'; if(opts.rerender) render();
   try{
-    const remote=await Sync.connect();
-    Store.setRemote(remote);
+    const cfg=Sync.readConfig();
+    const client=await Sync.createClient(cfg);     // one client, shared with Auth
+    Store.setRemote(Sync.makeRemote(client, cfg.room));
     await Store.hydrate();           // pull shared state, then live updates flow via subscribe
+    await Auth.init(client);         // accounts/roles ride the same Supabase project
     _syncState='live';
     if(opts.toast) toast('Live Sync connected');
   }catch(e){
     console.warn('Live Sync failed; staying offline',e);
-    Store.setRemote(null); _syncState='error';
+    Store.setRemote(null); Auth.detach(); _syncState='error';
     if(opts.toast) toast('Sync failed — working offline');
   }
   render();
@@ -2696,9 +2718,51 @@ function saveSync(){
 function disconnectSync(){
   const cfg=Sync.readConfig()||{};
   Sync.writeConfig({...cfg, enabled:false});   // keep creds for convenience, just disable
-  Store.setRemote(null); _syncState='offline';
+  Store.setRemote(null); Auth.detach(); _syncState='offline';
   Sheet.close(); toast('Disconnected — working offline'); render();
 }
+
+/* ---- Account (Phase C: accounts & roles) ---- */
+function openAccountSheet(){
+  const connected=Sync.isConfigured() && _syncState==='live';
+  const a=Auth.current();
+  let body;
+  if(!Sync.isConfigured()){
+    body=`<p style="color:var(--ink-dim);font-size:13px;line-height:1.5">
+      Accounts use your Live Sync Supabase project. Set up <b>📡 Live Sync</b> first, then sign in here.</p>
+      <button class="cta" onclick="Sheet.close();openSyncSheet()">Set up Live Sync</button>`;
+  } else if(a.signedIn){
+    body=`<div class="acct-card">
+        <div class="acct-id">
+          <div class="acct-email">${esc(a.email||'Signed in')}</div>
+          <span class="role-chip ${a.role}">${esc(Auth.roleLabel(a.role))}</span>
+        </div>
+        <div class="acct-cap">${Auth.canWrite(a.role)
+          ? '✓ Can score &amp; edit shared games'
+          : '👁 Read-only — you can follow live games but not edit them'}</div>
+      </div>
+      <button class="cta ghost" onclick="signOutNow()">Sign out</button>
+      <div class="rsvp-note" style="padding:14px 4px 0">Roles are set in Supabase (see <b>docs/AUTH.md</b>). New sign-ins start as <b>fan</b> until promoted.</div>`;
+  } else {
+    body=`<p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:0 0 12px">
+        Sign in with a magic link — no password. We'll email you a link that signs you in.</p>
+      <label class="fld"><span>EMAIL</span>
+        <input class="in" id="acctEmail" type="email" placeholder="you@example.com"></label>
+      <button class="cta" onclick="sendMagicLink()">Send magic link</button>`;
+  }
+  Sheet.open(`
+    <div class="sheet-head"><h3>👤 Account</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">${body}</div>`);
+}
+async function sendMagicLink(){
+  const email=(document.getElementById('acctEmail').value||'').trim();
+  if(!email){ toast('Enter your email'); return; }
+  try{
+    await Auth.signInWithEmail(email, location.origin+location.pathname);
+    Sheet.close(); toast('Check your email for the sign-in link');
+  }catch(e){ console.warn(e); toast('Could not send link — check Live Sync'); }
+}
+async function signOutNow(){ await Auth.signOut(); Sheet.close(); toast('Signed out'); render(); }
 
 /* ---- AI write-ups (Phase D) ---- */
 function openAiSheet(){
@@ -2778,6 +2842,7 @@ Object.assign(window, {
   rsvp, renderMore, nav, toggleTheme, exportData, wipe, esc,
   Sync, initSync, openSyncSheet, saveSync, disconnectSync,
   AI, aiMvpContext, enhanceMvpSummary, regenerateMvpSummary, openAiSheet, saveAi, disableAi,
+  Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
 });
 
 /* ---- Pull-to-refresh (touch only) ----
@@ -2829,6 +2894,7 @@ function initPullToRefresh(){
   try{ const t=localStorage.getItem('dt.theme'); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
   Store.load();
   Store.sub(()=>render());
+  Auth.onChange(()=>render());     // reflect sign-in / role changes in the UI
   render();
   initPullToRefresh();
   // dismiss the branded boot splash once the first paint is up

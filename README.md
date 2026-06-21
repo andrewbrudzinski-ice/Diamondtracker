@@ -53,6 +53,14 @@ project/SQL/keys steps are in [`docs/SYNC.md`](docs/SYNC.md). Credentials live o
 device's `localStorage`, never in the repo. The Supabase client is lazy-loaded from a CDN only
 when you connect, so the default app has zero dependencies.
 
+## Accounts & roles (optional, Phase C)
+
+Sign-in (passwordless email magic link) with five roles — admin / manager /
+scorekeeper / player / fan — on top of Live Sync's Supabase project. **Row-Level
+Security enforces** who can write a shared room; fans/players are read-only. Set it
+up under **More → 👤 Account**; the SQL and role-promotion steps are in
+[`docs/AUTH.md`](docs/AUTH.md). Fully optional — the offline local app is unchanged.
+
 ## AI write-ups (optional, Phase D)
 
 Generate Game MVP recaps with Claude (`claude-opus-4-8`) instead of the built-in template —

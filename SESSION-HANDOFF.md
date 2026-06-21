@@ -212,13 +212,31 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   wired — add a "Generate recap" button on the box score / season views. **⚠️ Security:** the
   key is client-side; don't enable AI on a public deploy — proxy it once Phase C adds a backend.
 
-### Session 5+ — Phase C (accounts, roles, fan page) & rest of Phase D
-- **Phase C:** Supabase Auth + five roles (admin/manager/scorekeeper/player/fan) with
-  Row-Level Security; self-service RSVPs; public read-only **fan live-game page** (a natural
-  extension of the Phase B room sync — read-only viewer); push notifications.
-- **Phase D (remaining):** wire recap/season-story generation into the UI; then close the
-  remaining stat gap — **fielding stats / defensive notation** → fielding box + Defensive
-  Player of the Year (pure local/event-sourced).
+### Phase C (accounts & roles) — core  ✅ DONE (code) · ⏳ needs a live project to verify
+- `js/auth.js` (`Auth`) rides the same Supabase project as Live Sync (shares the client from
+  `Sync.createClient`). Passwordless email magic-link sign-in; five roles
+  (admin/manager/scorekeeper/player/fan) read from a `diamondtracker_profiles` row. Capability
+  helpers (`canWrite`/`canManageTeams`/`isAdmin`) mirror RLS. Mock-client tests in
+  `tests/auth.test.js`.
+- Wired in `app.js`: `initSync()` shares one client with `Auth.init()`; `blockedByRole()`
+  guards the write chokepoints (`act`/`withUndo`/`startGame`/`finishGame`) so fans/players are
+  read-only; **More → 👤 Account** sheet (magic link, role chip, sign out); `Auth.onChange`
+  re-renders. RLS schema `supabase/auth.sql` (profiles + signup trigger + writer-only
+  insert/update; reads stay open for fans) and `docs/AUTH.md`.
+- **Security:** RLS enforces writes server-side; client checks are UX only. **Remaining to
+  verify (manual):** run `auth.sql`, enable Email auth + set Site/Redirect URLs, sign in,
+  promote yourself to admin, confirm a fan is read-only.
+- **Deferred:** push notifications (needs a service worker + push provider — a server piece,
+  out of scope for the no-backend build); in-app role editor + self-service RSVPs.
+
+### Next — Phase C fan page (#1) then Phase D fielding (#3)
+- **Fan live-game page (#1):** a public, read-only shareable view of a room. Reads are already
+  open (anon `select`), so a viewer can `Sync.makeRemote(client, room).pull()` + subscribe and
+  render a live scoreboard/box without signing in. Likely a `?room=CODE&fan=1` deep link that
+  boots into a read-only view.
+- **Phase D fielding (#3, last):** per-fielder PO/A/E + defensive notation → fielding box +
+  Defensive Player of the Year (pure local/event-sourced, fully testable). Also: wire the
+  already-built `recapPrompt`/`gameRecap` into the box-score/season UI.
 
 ---
 

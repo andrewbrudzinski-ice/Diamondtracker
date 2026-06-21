@@ -60,17 +60,17 @@ export const Sync = (()=> {
   }
 
   /* ---- lazy client + connect (network) ---- */
-  async function loadClient(url, anonKey){
+  async function createClient(cfg = readConfig()){
+    if(!isConfigured(cfg)) throw new Error('Live Sync is not configured');
     const mod = await import(/* @vite-ignore */ CDN);
-    return mod.createClient(url, anonKey);
+    return mod.createClient(cfg.url, cfg.anonKey);
   }
   // Resolve a ready-to-use remote from a config object. Throws on bad config
   // or load failure (callers stay offline on throw).
   async function connect(cfg = readConfig()){
-    if(!isConfigured(cfg)) throw new Error('Live Sync is not configured');
-    const client = await loadClient(cfg.url, cfg.anonKey);
+    const client = await createClient(cfg);
     return makeRemote(client, cfg.room);
   }
 
-  return { TABLE, CFG_KEY, CDN, readConfig, writeConfig, clearConfig, isConfigured, makeRemote, connect };
+  return { TABLE, CFG_KEY, CDN, readConfig, writeConfig, clearConfig, isConfigured, makeRemote, createClient, connect };
 })();
