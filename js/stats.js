@@ -245,6 +245,41 @@ export const Stats = (()=>{
   function careerBatting(playerId){ return playerBatting(playerId, true, null); }
   function careerPitching(playerId){ return playerPitching(playerId, true, null); }
 
+  // Per-game log for a player, newest first: each game they batted or pitched
+  // in, with opponent + result. opts: {seasonId, includeLive, limit}.
+  function gameLog(playerId, opts={}){
+    const {seasonId=null, includeLive=true, limit=12}=opts;
+    const s=Store.get();
+    let games=[...s.history];
+    if(includeLive && s.game) games.push(s.game);
+    if(seasonId) games=games.filter(g=>g.seasonId===seasonId);
+    games.sort((a,b)=>(b.created||0)-(a.created||0));
+    const out=[];
+    for(const g of games){
+      const bat={}, pitch={}, field={};
+      tallyGame(g, bat, pitch, field);
+      const b=bat[playerId], p=pitch[playerId], f=field[playerId];
+      if(!b && !p && !f) continue;
+      // which side did this player play for?
+      let side=null;
+      for(const ev of g.events){ if(ev.batterId===playerId && ev.side){ side=ev.side; break; } }
+      if(!side) for(const ev of g.events){ if(ev.pitcherId===playerId && ev.side){ side= ev.side==='away'?'home':'away'; break; } }
+      if(!side){ // fall back to roster membership
+        if((g.home&&g.home.roster||[]).some(x=>x&&x.id===playerId)) side='home';
+        else side='away';
+      }
+      const my=g.totals[side].r, opp=g.totals[side==='away'?'home':'away'].r;
+      out.push({
+        gameId:g.id, created:g.created,
+        opp: side==='away'?g.home.name:g.away.name,
+        result: my>opp?'W':opp>my?'L':'T', score:`${my}-${opp}`,
+        bat:b||null, pitch:p||null, field:f||null,
+      });
+      if(out.length>=limit) break;
+    }
+    return out;
+  }
+
   // Milestone detection on career totals. Returns achieved badges.
   const BAT_MILESTONES=[
     {stat:'h',  marks:[5,10,25,50,100,250], label:'Hits'},
@@ -339,7 +374,7 @@ export const Stats = (()=>{
   return { blankBat, blankPitch, blankField, avg, obp, slg, ops, era, whip, ipStr,
            league, playerBatting, playerPitching, leaders, pitchLeaders, leaderTable, resolve,
            sprayData, sprayCount, fieldLeaders,
-           seasonBreakdown, careerBatting, careerPitching, milestones, gameBox };
+           seasonBreakdown, careerBatting, careerPitching, milestones, gameBox, gameLog };
 })();
 
 /* ============================================================

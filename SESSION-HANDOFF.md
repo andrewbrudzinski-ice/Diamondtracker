@@ -264,8 +264,10 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   `auth.sql`). Bootstrap the first admin via the SQL snippet, then everyone else in-app.
 
 ### Still open / nice-to-have
+- ~~player game logs~~ **DONE** — `Stats.gameLog(playerId,{seasonId,includeLive,limit})` powers a
+  tappable **Game Log** section on the player card (date · opp · result · AB/H/HR/RBI).
 - **AI season story** (aggregate a season → narrative); **share card** (export box score as an
-  image); **player game logs / splits**; pitch counts; situational (RISP) splits.
+  image); pitch counts; situational (RISP) splits.
 - Phase C: **self-service RSVPs** (needs auth-account ↔ roster-player linking — RSVPs are keyed
   by roster `playerId` today); **push notifications** (needs a server/service-worker).
   Game-only sync mode (vs whole-state).
