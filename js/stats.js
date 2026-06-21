@@ -9,7 +9,7 @@ export const Stats = (()=>{
 
   // tally one game's events into maps keyed by playerId
   function tallyGame(g, bat, pitch, field){
-    const seenBat=new Set(), seenPitch=new Set();
+    const seenBat=new Set(), seenPitch=new Set(), seenField=new Set();
     g.events.forEach(ev=>{
       const id=ev.batterId;
       if(id){
@@ -28,7 +28,52 @@ export const Stats = (()=>{
       if(Array.isArray(ev.scored)){
         ev.scored.forEach(sc=>{ if(sc && sc.id){ (bat[sc.id]||(bat[sc.id]=blankBat())).r++; } });
       }
+      // fielding: derive PO/A/E from the play's location + the fielding roster
+      accumField(field, g, ev, seenField);
     });
+  }
+
+  // ---- FIELDING (derived) ----
+  // Map a defensive lineup (the fielding team's roster) to position codes,
+  // then credit putouts/assists/errors from the located out. Approximate but
+  // event-sourced; unlocated plays simply aren't attributed to a fielder.
+  function posMapFor(roster){
+    const m={};
+    (roster||[]).forEach(p=>{ if(p && p.pos && p.id && !(p.pos in m)) m[p.pos]=p; });
+    return m;
+  }
+  function fielderForZone(posMap, zone){
+    if(!zone) return null;
+    const z = zone==='LC'||zone==='RC' ? 'CF' : zone;   // gaps -> center field
+    return posMap[z] || null;
+  }
+  function accumField(field, g, ev, seen){
+    const side = ev.side==='away' ? 'home' : ev.side==='home' ? 'away' : null;
+    if(!side || !g[side]) return;
+    const posMap = posMapFor(g[side].roster);
+    const get = p => p && p.id ? (field[p.id] || (field[p.id]=blankField())) : null;
+    const mark = (p,key) => { const f=get(p); if(!f) return; f[key]++;
+      if(!seen.has(p.id)){ f.games++; seen.add(p.id); } };
+    const po = p=>mark(p,'po'), a = p=>mark(p,'a'), e = p=>mark(p,'e');
+    const first = posMap['1B'];
+    switch(ev.type){
+      case 'k': po(posMap['C']); break;                        // strikeout: catcher PO
+      case 'out':{
+        const f=fielderForZone(posMap, ev.zone);
+        if(ev.bbType==='fly'){ po(f); }                        // caught in the air (null -> no-op)
+        else if(ev.bbType==='ground' && f){
+          if(f.pos!=='1B'){ a(f); po(first); }                 // 6-3 style: assist + 1B PO
+          else po(f);                                          // ball to 1B unassisted
+        }
+        break;                                                 // unlocated out -> team only
+      }
+      case 'sac': po(fielderForZone(posMap, ev.zone)); break;  // sac fly: outfield catch
+      case 'dp':{ const f=fielderForZone(posMap, ev.zone);
+        if(f){ a(f); po(posMap['2B']||posMap['SS']); po(first); } break; }   // two PO
+      case 'fc':{ const f=fielderForZone(posMap, ev.zone);
+        if(f){ a(f); po(posMap['SS']||posMap['2B']); } break; }
+      case 'error':{ const f=fielderForZone(posMap, ev.zone); if(f) e(f); break; }
+    }
   }
 
   function accumBat(b,ev){
@@ -232,7 +277,7 @@ export const Stats = (()=>{
     const bat={}, pitch={}, field={};
     tallyGame(g, bat, pitch, field);   // tally just this game's events
     // split players by side using the side recorded on events
-    const sides={away:{batters:[],pitchers:[]}, home:{batters:[],pitchers:[]}};
+    const sides={away:{batters:[],pitchers:[],fielders:[]}, home:{batters:[],pitchers:[],fielders:[]}};
     const batSide={}, pitchSide={};
     g.events.forEach(ev=>{
       if(ev.batterId && ev.side) batSide[ev.batterId]=ev.side;
@@ -240,6 +285,9 @@ export const Stats = (()=>{
         pitchSide[ev.pitcherId]= ev.side==='away'?'home':'away';
       }
     });
+    // a fielder's side = the roster they belong to
+    const fieldSide={};
+    ['away','home'].forEach(s=>{ ((g[s]&&g[s].roster)||[]).forEach(p=>{ if(p&&p.id) fieldSide[p.id]=s; }); });
     Object.entries(bat).forEach(([id,b])=>{
       const side=batSide[id]; if(!side) return;
       const r=resolve(id);
@@ -249,6 +297,11 @@ export const Stats = (()=>{
       const side=pitchSide[id]; if(!side) return;
       const r=resolve(id);
       sides[side].pitchers.push({id,name:r?r.player.name:id,num:r?r.player.num:'',line:p});
+    });
+    Object.entries(field).forEach(([id,f])=>{
+      const side=fieldSide[id]; if(!side) return;
+      const r=resolve(id);
+      sides[side].fielders.push({id,name:r?r.player.name:id,num:r?r.player.num:'',line:f});
     });
     // left on base: runners still on at the time the half ended — approximate
     // from total baserunners reached minus those who scored/were out. Simpler:
@@ -273,9 +326,19 @@ export const Stats = (()=>{
     };
   }
 
-  return { blankBat, blankPitch, avg, obp, slg, ops, era, whip, ipStr,
+  // Defensive leaders: rank by total chances handled (PO + A), errors as
+  // the tiebreak (fewer is better). Min chances filters out cameo fielders.
+  function fieldLeaders(opts={}){
+    const {field}=league({includeLive:true, seasonId:opts.seasonId||null});
+    const min=opts.minChances||0;
+    return Object.entries(field).map(([id,f])=>({id, f, chances:f.po+f.a}))
+      .filter(x=>x.chances>=min && x.chances>0)
+      .sort((a,b)=> (b.chances-a.chances) || (a.f.e-b.f.e));
+  }
+
+  return { blankBat, blankPitch, blankField, avg, obp, slg, ops, era, whip, ipStr,
            league, playerBatting, playerPitching, leaders, pitchLeaders, leaderTable, resolve,
-           sprayData, sprayCount,
+           sprayData, sprayCount, fieldLeaders,
            seasonBreakdown, careerBatting, careerPitching, milestones, gameBox };
 })();
 

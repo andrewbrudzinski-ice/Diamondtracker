@@ -678,6 +678,8 @@ input.in,select.in{width:100%;margin-top:6px;background:var(--bg);border:1px sol
   padding:9px 12px;border-top:1px solid var(--line);font-family:var(--font-num);
   font-size:13px;font-weight:700;text-align:center}
 .bx-row.pitch{grid-template-columns:1.8fr repeat(6,1fr)}
+.bx-row.field{grid-template-columns:1.8fr repeat(3,1fr)}
+.bx-row .bx-err{color:var(--out)}
 .bx-row:first-child{border-top:none}
 .bx-row.bx-head{background:var(--panel-2);color:var(--ink-dim);font-size:10px;letter-spacing:.5px}
 .bx-name{text-align:left;font-family:var(--font-body)!important;font-weight:600;
@@ -1130,3 +1132,63 @@ input.in,select.in{width:100%;margin-top:6px;background:var(--bg);border:1px sol
 button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,input:focus-visible,select:focus-visible{
   outline:2px solid var(--clay);outline-offset:2px}
 .empty .glyph{filter:drop-shadow(0 8px 22px rgba(0,0,0,.45))}
+
+/* ---- Live Sync status ---- */
+.sync-pill{margin-left:auto;font-family:var(--font-num);font-size:10px;font-weight:800;letter-spacing:.5px;
+  padding:3px 9px;border-radius:20px;border:1px solid var(--line);color:var(--ink-dim);background:var(--panel-2)}
+.sync-pill.live{color:var(--safe);border-color:var(--safe);background:rgba(61,220,132,.12)}
+.sync-pill.connecting{color:var(--gold);border-color:var(--gold)}
+.sync-pill.error{color:var(--out);border-color:var(--out)}
+.sync-status{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px}
+.sync-status .dot{width:9px;height:9px;border-radius:50%;background:var(--ink-faint);flex:0 0 auto}
+.sync-status.live .dot{background:var(--safe);box-shadow:0 0 10px var(--safe);animation:ring 1.6s infinite}
+.sync-status.connecting .dot{background:var(--gold)}
+.sync-status.error .dot{background:var(--out)}
+
+/* ---- AI write-ups ---- */
+.ai-badge{display:inline-block;margin-left:8px;font-family:var(--font-num);font-size:9px;font-weight:800;
+  letter-spacing:.5px;color:var(--gold);border:1px solid rgba(255,201,77,.45);border-radius:20px;
+  padding:1px 7px;vertical-align:middle;white-space:nowrap}
+.mvp-card-summary.gen{color:var(--ink-dim);font-style:italic;display:flex;align-items:center;gap:8px}
+.ai-dots{display:inline-flex;gap:3px}
+.ai-dots i{width:5px;height:5px;border-radius:50%;background:var(--gold);display:inline-block;
+  animation:aiDot 1s ease-in-out infinite}
+.ai-dots i:nth-child(2){animation-delay:.15s} .ai-dots i:nth-child(3){animation-delay:.3s}
+@keyframes aiDot{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+.ai-regen{margin-top:10px;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.5px;
+  font-size:11px;font-weight:700;color:var(--gold);background:rgba(255,201,77,.10);
+  border:1px solid rgba(255,201,77,.35);border-radius:20px;padding:6px 12px;transition:transform .08s}
+.ai-regen:active{transform:scale(.95)}
+.recap-card{margin:10px 14px 4px;padding:14px;border-radius:var(--radius);background:var(--panel);
+  border:1px solid var(--line);box-shadow:var(--shadow)}
+.recap-text{font-size:14px;line-height:1.55;color:var(--ink)}
+
+/* ---- Account & roles ---- */
+.acct-card{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;margin-bottom:14px}
+.acct-id{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.acct-email{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.acct-cap{margin-top:10px;font-size:12px;color:var(--ink-dim);line-height:1.4}
+.role-chip{flex:0 0 auto;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.5px;
+  font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;border:1px solid var(--line);color:var(--ink-dim)}
+.role-chip.admin{color:var(--clay);border-color:var(--clay);background:var(--clay-soft)}
+.role-chip.manager{color:var(--gold);border-color:var(--gold);background:rgba(255,201,77,.10)}
+.role-chip.scorekeeper{color:var(--safe);border-color:var(--safe);background:rgba(61,220,132,.10)}
+.role-chip.player{color:var(--blue);border-color:var(--blue);background:rgba(77,159,255,.10)}
+.role-chip.fan{color:var(--ink-dim)}
+
+/* ---- Public fan viewer ---- */
+.fan-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:14px 18px 10px;position:sticky;top:0;z-index:15;
+  background:linear-gradient(180deg,var(--bg-2) 60%,transparent)}
+.fan-bar .logo{display:flex;align-items:center;gap:9px}
+.fan-bar .mark{width:30px;height:30px;border-radius:9px;
+  background:linear-gradient(135deg,var(--clay),var(--clay-deep));
+  display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:var(--shadow-clay)}
+.fan-bar .wordmark{font-family:var(--font-display);font-weight:700;font-size:21px;letter-spacing:.5px;text-transform:uppercase}
+.fan-bar .wordmark b{color:var(--clay)}
+.fan-tag{font-family:var(--font-num);font-size:11px;font-weight:800;letter-spacing:.5px;
+  padding:4px 11px;border-radius:20px;border:1px solid var(--line);color:var(--ink-dim);white-space:nowrap}
+.fan-tag.live{color:var(--out);border-color:var(--out);background:rgba(255,85,102,.10)}
+.fan-tag.connecting{color:var(--gold);border-color:var(--gold)}
+body.fan .app{padding-bottom:env(safe-area-inset-bottom)}

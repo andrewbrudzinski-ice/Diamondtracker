@@ -48,6 +48,13 @@ export const Awards = (()=>{
     if(poy){ const p=pitch[poy];
       const a=make('Pitcher of the Year',poy,`${Stats.era(p).toFixed(2)} ERA · ${p.k} K · ${Stats.ipStr(p)} IP`); if(a)out.push(a); }
 
+    // Defensive Player of the Year — most chances handled (PO+A), now that
+    // fielding is derived from located plays. Tiebreak: fewer errors.
+    const dleaders=Stats.fieldLeaders({seasonId, minChances:3});
+    if(dleaders.length){ const d=dleaders[0]; const f=d.f;
+      const a=make('Defensive Player of the Year',d.id,
+        `${f.po} PO · ${f.a} A · ${f.e} E`); if(a)out.push(a); }
+
     // Most Improved — needs >=2 seasons; compare this season vs prior OPS
     const mip=mostImproved(seasonId, bat);
     if(mip) out.push(mip);

@@ -8,6 +8,9 @@ import { Stats } from './stats.js';
 import { Awards } from './awards.js';
 import { Schedule } from './schedule.js';
 import { Tournament } from './tournament.js';
+import { Sync } from './sync.js';
+import { AI } from './ai.js';
+import { Auth } from './auth.js';
 
 const ord = n => n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th');
 const toast = (()=>{ let t; return msg=>{
@@ -34,10 +37,23 @@ function setView(v){
 }
 let _animateView=false;  // one-shot: play a view-enter transition on next render
 
+// When signed in to a shared room as a non-writer (fan/player), block local
+// mutations so the UI matches what RLS enforces server-side. Offline / signed
+// out → never blocks (the local app is fully editable, as before).
+function blockedByRole(){
+  const a=Auth.current();
+  if(a.signedIn && !Auth.canWrite(a.role)){
+    toast(`Read-only — signed in as ${Auth.roleLabel(a.role)}`);
+    return true;
+  }
+  return false;
+}
+
 /* ---- apply an action with undo snapshot ---- */
 function act(name, meta){
   const g = Store.get().game;
   if(!g || g.final) return;
+  if(blockedByRole()) return;
   if(!g._undo) g._undo=[];
   const runsBefore = g.totals.away.r + g.totals.home.r;
   // snapshot (cheap clone of mutable bits)
@@ -373,6 +389,7 @@ function runnerOut(baseIdx){
 // helper: run a base mutation with an undo snapshot + commit + fx
 function withUndo(fn){
   const g=Store.get().game; if(!g||g.final) return;
+  if(blockedByRole()) return;
   if(!g._undo) g._undo=[];
   const runsBefore=g.totals.away.r+g.totals.home.r;
   g._undo.push(JSON.stringify({inning:g.inning,half:g.half,outs:g.outs,balls:g.balls,
@@ -431,6 +448,7 @@ function undo(){
 }
 
 function finishGame(){
+  if(blockedByRole()) return;
   const g=Store.get().game;
   Sheet.open(`
     <div class="sheet-head"><h3>End Game?</h3><button class="x" onclick="Sheet.close()">×</button></div>
@@ -509,11 +527,88 @@ function setGameMvp(gameId, playerId){
   const g=findGameById(gameId);
   if(!g) return;
   g.mvpId=playerId;
-  g.mvpSummary=generateMvpSummary(g, playerId);
+  g.mvpSummary=generateMvpSummary(g, playerId);   // instant deterministic write-up
+  g.mvpSummaryAI=false;
   Store.commit(); Sheet.close();
   setView('score');
   const r=Stats.resolve(playerId);
   toast(`MVP: ${r?r.player.name:'selected'}`);
+  if(AI.isConfigured()) enhanceMvpSummary(gameId, playerId);  // upgrade async if a key is set
+}
+// Build the fact context an AI write-up needs from the box score.
+function aiMvpContext(g, playerId){
+  const box=Stats.gameBox(g);
+  const all=[...box.sides.away.batters, ...box.sides.home.batters];
+  const p=all.find(x=>x.id===playerId); if(!p) return null;
+  const r=Stats.resolve(playerId);
+  const onAway=box.sides.away.batters.some(x=>x.id===playerId);
+  const myRuns=onAway?g.totals.away.r:g.totals.home.r;
+  const oppRuns=onAway?g.totals.home.r:g.totals.away.r;
+  return {
+    name:p.name, num:p.num, team:r?r.team.name:'their team',
+    opponent:onAway?g.home.name:g.away.name,
+    statLine:mvpStatLine(p.line),
+    won:myRuns>oppRuns, tie:myRuns===oppRuns, myRuns, oppRuns,
+  };
+}
+// Replace the templated MVP blurb with a real Claude write-up; on any
+// failure the deterministic template already in place simply stays.
+async function enhanceMvpSummary(gameId, playerId){
+  const g=findGameById(gameId); if(!g) return;
+  const ctx=aiMvpContext(g, playerId); if(!ctx) return;
+  g._mvpGenerating=true; render();                  // transient; not committed yet
+  let text=null;
+  try{ text=await AI.mvpSummary(ctx); }
+  catch(e){ console.warn('AI MVP write-up failed; keeping template',e); }
+  const cur=findGameById(gameId); if(!cur) return;  // game may have changed during the await
+  cur._mvpGenerating=false;                          // clear before the single commit
+  if(text && cur.mvpId===playerId){ cur.mvpSummary=text; cur.mvpSummaryAI=true; }
+  Store.commit(); render();
+}
+function regenerateMvpSummary(gameId){
+  const g=findGameById(gameId); if(!g||!g.mvpId) return;
+  if(!AI.isConfigured()){ openAiSheet(); return; }
+  enhanceMvpSummary(gameId, g.mvpId);
+}
+
+/* ---- AI game recap (box score) ---- */
+function aiRecapContext(g){
+  const box=Stats.gameBox(g);
+  const top=[...box.sides.away.batters, ...box.sides.home.batters]
+    .filter(b=>b.line.h||b.line.rbi||b.line.hr)
+    .sort((a,b)=>(b.line.h+b.line.rbi+b.line.hr*2)-(a.line.h+a.line.rbi+a.line.hr*2))
+    .slice(0,3)
+    .map(b=>`${b.name} ${b.line.h}-${b.line.ab}${b.line.hr?`, ${b.line.hr} HR`:''}${b.line.rbi?`, ${b.line.rbi} RBI`:''}`);
+  return { away:g.away.name, home:g.home.name,
+           awayRuns:g.totals.away.r, homeRuns:g.totals.home.r,
+           standouts: top.join('; ') };
+}
+async function enhanceGameRecap(gameId){
+  const g=findGameById(gameId); if(!g) return;
+  if(!AI.isConfigured()){ openAiSheet(); return; }
+  g._recapGenerating=true; render();
+  let text=null;
+  try{ text=await AI.gameRecap(aiRecapContext(g)); }
+  catch(e){ console.warn('AI recap failed',e); toast('Recap failed — check AI settings'); }
+  const cur=findGameById(gameId); if(!cur) return;
+  cur._recapGenerating=false;
+  if(text){ cur.recap=text; cur.recapAI=true; }
+  Store.commit(); render();
+}
+// Recap card shown in the box score: the generated recap (if any) + a
+// generate/regenerate button when AI is configured.
+function recapBlock(g){
+  const has=!!g.recap;
+  const gen=g._recapGenerating;
+  if(!has && !AI.isConfigured() && !gen) return '';   // nothing to show, no AI
+  const body = gen
+    ? `<div class="mvp-card-summary gen"><span class="ai-dots"><i></i><i></i><i></i></span> Writing the recap…</div>`
+    : (has?`<div class="recap-text">${esc(g.recap)}${g.recapAI?`<span class="ai-badge" title="Written by Claude">✨ AI</span>`:''}</div>`:'');
+  const btn = (AI.isConfigured() && !gen)
+    ? `<button class="ai-regen" onclick="enhanceGameRecap('${g.id}')">✨ ${has?'Regenerate recap':'Write game recap'}</button>`
+    : '';
+  if(!body && !btn) return '';
+  return `<div class="recap-card">${body}${btn}</div>`;
 }
 function skipMvp(){ Sheet.close(); setView('score'); toast('Game saved'); }
 function findGameById(id){
@@ -570,13 +665,21 @@ function mvpCardHTML(g){
   const name=r?r.player.name:(p?p.name:'MVP');
   const num=r?r.player.num:(p?p.num:'');
   const statLine=p?mvpStatLine(p.line):'';
+  const aiBadge=g.mvpSummaryAI?`<span class="ai-badge" title="Written by Claude">✨ AI</span>`:'';
+  const summary = g._mvpGenerating
+    ? `<div class="mvp-card-summary gen"><span class="ai-dots"><i></i><i></i><i></i></span> Writing the recap…</div>`
+    : (g.mvpSummary?`<div class="mvp-card-summary">${esc(g.mvpSummary)}${aiBadge}</div>`:'');
+  const regen = (AI.isConfigured() && !g._mvpGenerating)
+    ? `<button class="ai-regen" onclick="event.stopPropagation();regenerateMvpSummary('${g.id}')" title="Regenerate with Claude">✨ ${g.mvpSummaryAI?'Regenerate':'Write with AI'}</button>`
+    : '';
   return `<div class="mvp-card">
     <span class="avatar">${Crest.player(name,num,color,false)}</span>
     <div class="mvp-card-body">
       <div class="mvp-card-tag">🏆 Game MVP</div>
       <div class="mvp-card-name">${esc(name)}</div>
       ${statLine?`<div class="mvp-card-stats">${statLine}</div>`:''}
-      ${g.mvpSummary?`<div class="mvp-card-summary">${esc(g.mvpSummary)}</div>`:''}
+      ${summary}
+      ${regen}
     </div>
   </div>`;
 }
@@ -668,6 +771,7 @@ function applyLineup(side,tid){
   rosterInput.value=players.map(p=>`${p.num?p.num+' ':''}${p.name}`).join('\n');
 }
 function startGame(){
+  if(blockedByRole()) return;
   const awayTid=(document.getElementById('awayTeam')||{}).value||'';
   const homeTid=(document.getElementById('homeTeam')||{}).value||'';
   // Resolve rosters WITH player ids when a saved team is selected,
@@ -1238,7 +1342,8 @@ function boxScoreHTML(g){
     <div class="box-totals">
       ${boxTotalRow(g.away.name, box.totals.away)}
       ${boxTotalRow(g.home.name, box.totals.home)}
-    </div>`;
+    </div>
+    ${recapBlock(g)}`;
 
   // for each side: batting then pitching
   [['away',g.away.name],['home',g.home.name]].forEach(([side,name])=>{
@@ -1269,6 +1374,20 @@ function boxScoreHTML(g){
               <span class="bx-name">${esc(p.name)}${p.num?` <i>#${p.num}</i>`:''}</span>
               <span>${Stats.ipStr(pl)}</span><span>${pl.h}</span><span>${pl.r}</span>
               <span>${pl.bb}</span><span>${pl.k}</span><span>${Stats.era(sp).toFixed(2)}</span>
+            </div>`;}).join('')}
+        </div>`;
+    }
+    const fielders=(s.fielders||[]).filter(f=>f.line.po||f.line.a||f.line.e)
+      .sort((a,b)=>(b.line.po+b.line.a)-(a.line.po+a.line.a));
+    if(fielders.length){
+      html+=`<div class="box-sec">${esc(name)} · Fielding</div>
+        <div class="box-table">
+          <div class="bx-row bx-head field"><span class="bx-name">Fielder</span>
+            <span>PO</span><span>A</span><span>E</span></div>
+          ${fielders.map(p=>{const fl=p.line;
+            return `<div class="bx-row field">
+              <span class="bx-name">${esc(p.name)}${p.num?` <i>#${p.num}</i>`:''}</span>
+              <span>${fl.po}</span><span>${fl.a}</span><span class="${fl.e?'bx-err':''}">${fl.e}</span>
             </div>`;}).join('')}
         </div>`;
     }
@@ -1832,6 +1951,7 @@ function startDrag(e,slot,list){
 function render(){
   const s=Store.get();
   const app=document.getElementById('app');
+  if(fanMode){ app.innerHTML = renderFan(); return; }   // public read-only viewer
   let body='';
   if(activeView==='score'){
     body = s.game ? renderScore(s.game) : emptyHome();
@@ -2563,6 +2683,13 @@ function renderMore(){
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="setView('tournaments')">🏆 Tournaments &amp; Brackets${Tournament.all().length?`<span class="more-badge">${Tournament.all().length}</span>`:''}</button>
     <div class="sec" style="padding:8px 0"><h3>Settings</h3></div>
+    ${(()=>{ const a=Auth.current();
+      return `<button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
+        onclick="openAccountSheet()">👤 Account<span class="sync-pill ${a.signedIn?'live':''}">${a.signedIn?esc(Auth.roleLabel(a.role)).toUpperCase():'SIGN IN'}</span></button>`; })()}
+    <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
+      onclick="openSyncSheet()">📡 Live Sync<span class="sync-pill ${_syncState}">${_syncState==='live'?'LIVE':_syncState==='connecting'?'…':_syncState==='error'?'ERROR':'OFF'}</span></button>
+    <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
+      onclick="openAiSheet()">✨ AI Write-ups<span class="sync-pill ${AI.isConfigured()?'live':''}">${AI.isConfigured()?'ON':'OFF'}</span></button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="toggleTheme()">${theme==='light'?'🌙 Switch to Dark':'☀️ Switch to Light'}</button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
@@ -2588,6 +2715,237 @@ function nav(){
   const btn=([v,ic,lbl])=>`<button class="${activeView===v?'active':''}" onclick="setView('${v}')">
     <span class="ic">${ic}</span>${lbl}</button>`;
   return `<div class="nav">${ind}${tabs.map(btn).join('')}</div>`;
+}
+
+/* ---- Live Sync (Phase B) ---- */
+let _syncState='offline';   // 'offline' | 'connecting' | 'live' | 'error'
+// Connect on boot / after save if configured. Offline-first: failure is silent
+// (we stay on the local cache) beyond a status flag.
+async function initSync(opts={}){
+  if(!Sync.isConfigured()){ _syncState='offline'; return; }
+  _syncState='connecting'; if(opts.rerender) render();
+  try{
+    const cfg=Sync.readConfig();
+    const client=await Sync.createClient(cfg);     // one client, shared with Auth
+    Store.setRemote(Sync.makeRemote(client, cfg.room));
+    await Store.hydrate();           // pull shared state, then live updates flow via subscribe
+    await Auth.init(client);         // accounts/roles ride the same Supabase project
+    _syncState='live';
+    if(opts.toast) toast('Live Sync connected');
+  }catch(e){
+    console.warn('Live Sync failed; staying offline',e);
+    Store.setRemote(null); Auth.detach(); _syncState='error';
+    if(opts.toast) toast('Sync failed — working offline');
+  }
+  render();
+}
+function openSyncSheet(){
+  const cfg=Sync.readConfig()||{};
+  const v=s=>s?esc(s):'';
+  Sheet.open(`
+    <div class="sheet-head"><h3>📡 Live Sync</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">
+      <div class="sync-status ${_syncState}">
+        <span class="dot"></span>${_syncState==='live'?'Connected — sharing live':
+          _syncState==='connecting'?'Connecting…':_syncState==='error'?'Connection failed':'Offline (local only)'}</div>
+      <p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:12px 0">
+        Share one game across devices in real time. Create a free Supabase project, run the
+        setup SQL (see <b>docs/SYNC.md</b>), then paste your project URL + anon key and pick a
+        shared room code. Everything still works offline; sync is layered on top.</p>
+      <label class="fld"><span>SUPABASE URL</span>
+        <input class="in" id="syncUrl" placeholder="https://xxxx.supabase.co" value="${v(cfg.url)}"></label>
+      <label class="fld"><span>ANON KEY</span>
+        <input class="in" id="syncKey" placeholder="eyJ…" value="${v(cfg.anonKey)}"></label>
+      <label class="fld"><span>ROOM CODE</span>
+        <input class="in" id="syncRoom" placeholder="e.g. lions-2026" value="${v(cfg.room)}"></label>
+      <button class="cta" onclick="saveSync()">${Sync.isConfigured()?'Reconnect':'Connect'}</button>
+      ${Sync.isConfigured()?`<button class="cta ghost" style="margin-top:10px" onclick="copyFanLink()">📣 Copy fan link (read-only)</button>`:''}
+      ${cfg.url?`<button class="cta ghost" style="margin-top:10px" onclick="disconnectSync()">Disconnect</button>`:''}
+    </div>`);
+}
+function saveSync(){
+  const url=(document.getElementById('syncUrl').value||'').trim();
+  const anonKey=(document.getElementById('syncKey').value||'').trim();
+  const room=(document.getElementById('syncRoom').value||'').trim();
+  if(!url||!anonKey||!room){ toast('Fill in URL, key and room'); return; }
+  Sync.writeConfig({enabled:true, url, anonKey, room});
+  Sheet.close();
+  initSync({toast:true, rerender:true});
+}
+function disconnectSync(){
+  const cfg=Sync.readConfig()||{};
+  Sync.writeConfig({...cfg, enabled:false});   // keep creds for convenience, just disable
+  Store.setRemote(null); Auth.detach(); _syncState='offline';
+  Sheet.close(); toast('Disconnected — working offline'); render();
+}
+
+/* ---- Account (Phase C: accounts & roles) ---- */
+function openAccountSheet(){
+  const connected=Sync.isConfigured() && _syncState==='live';
+  const a=Auth.current();
+  let body;
+  if(!Sync.isConfigured()){
+    body=`<p style="color:var(--ink-dim);font-size:13px;line-height:1.5">
+      Accounts use your Live Sync Supabase project. Set up <b>📡 Live Sync</b> first, then sign in here.</p>
+      <button class="cta" onclick="Sheet.close();openSyncSheet()">Set up Live Sync</button>`;
+  } else if(a.signedIn){
+    body=`<div class="acct-card">
+        <div class="acct-id">
+          <div class="acct-email">${esc(a.email||'Signed in')}</div>
+          <span class="role-chip ${a.role}">${esc(Auth.roleLabel(a.role))}</span>
+        </div>
+        <div class="acct-cap">${Auth.canWrite(a.role)
+          ? '✓ Can score &amp; edit shared games'
+          : '👁 Read-only — you can follow live games but not edit them'}</div>
+      </div>
+      <button class="cta ghost" onclick="signOutNow()">Sign out</button>
+      <div class="rsvp-note" style="padding:14px 4px 0">Roles are set in Supabase (see <b>docs/AUTH.md</b>). New sign-ins start as <b>fan</b> until promoted.</div>`;
+  } else {
+    body=`<p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:0 0 12px">
+        Sign in with a magic link — no password. We'll email you a link that signs you in.</p>
+      <label class="fld"><span>EMAIL</span>
+        <input class="in" id="acctEmail" type="email" placeholder="you@example.com"></label>
+      <button class="cta" onclick="sendMagicLink()">Send magic link</button>`;
+  }
+  Sheet.open(`
+    <div class="sheet-head"><h3>👤 Account</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">${body}</div>`);
+}
+async function sendMagicLink(){
+  const email=(document.getElementById('acctEmail').value||'').trim();
+  if(!email){ toast('Enter your email'); return; }
+  try{
+    await Auth.signInWithEmail(email, location.origin+location.pathname);
+    Sheet.close(); toast('Check your email for the sign-in link');
+  }catch(e){ console.warn(e); toast('Could not send link — check Live Sync'); }
+}
+async function signOutNow(){ await Auth.signOut(); Sheet.close(); toast('Signed out'); render(); }
+
+/* ---- Public fan live-game page (Phase C) ----
+   A read-only viewer that follows a shared room via a deep link
+   (?fan=1&room=CODE&sb=<url>&k=<anon key>). Reads are open under RLS, so
+   no sign-in is needed; the viewer pulls + subscribes and never writes. */
+let fanMode=false;
+let _fanRoom='';
+let _fanStatus='connecting';   // 'connecting' | 'live' | 'error'
+
+// Build a shareable fan link from the current Live Sync config.
+function fanLink(){
+  const cfg=Sync.readConfig(); if(!Sync.isConfigured(cfg)) return '';
+  const p=new URLSearchParams({ fan:'1', room:cfg.room, sb:cfg.url, k:cfg.anonKey });
+  return `${location.origin}${location.pathname}?${p.toString()}`;
+}
+async function copyFanLink(){
+  const link=fanLink(); if(!link){ toast('Connect Live Sync first'); return; }
+  try{ await navigator.clipboard.writeText(link); toast('Fan link copied'); }
+  catch(e){ Sheet.open(`<div class="sheet-head"><h3>Fan link</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body"><p style="color:var(--ink-dim);font-size:13px">Copy this read-only link to share:</p>
+    <input class="in" readonly onclick="this.select()" value="${esc(link)}"></div>`); }
+}
+
+// Boot directly into the fan viewer (called from init when ?fan=1 is present).
+async function bootFan(params){
+  fanMode=true; _fanRoom=params.get('room')||''; _fanStatus='connecting';
+  document.body.classList.add('fan');
+  const sp=document.getElementById('splash'); if(sp) sp.remove();
+  Store.load();                       // local default; overwritten by the room state
+  Store.sub(()=>render());            // remote pushes -> applyRemote -> render
+  render();
+  const url=params.get('sb'), key=params.get('k');
+  if(!url||!key||!_fanRoom){ _fanStatus='error'; render(); return; }
+  try{
+    const client=await Sync.createClient({ enabled:true, url, anonKey:key, room:_fanRoom });
+    Store.setRemote(Sync.makeRemote(client, _fanRoom));   // fan never commits, so never pushes
+    await Store.hydrate();
+    _fanStatus='live';
+  }catch(e){ console.warn('fan connect failed',e); _fanStatus='error'; }
+  render();
+}
+
+function renderFan(){
+  const s=Store.get();
+  const g=s.game;
+  const head=`<div class="fan-bar">
+    <div class="logo"><div class="mark">⚾</div><div class="wordmark">Diamond<b>Tracker</b></div></div>
+    <span class="fan-tag ${_fanStatus}">${_fanStatus==='live'?'● LIVE':_fanStatus==='connecting'?'CONNECTING…':'OFFLINE'}</span>
+  </div>`;
+  if(_fanStatus==='error'){
+    return `${head}<div class="empty"><div class="glyph">📡</div><h2>Can't Connect</h2>
+      <p>This fan link is missing or has invalid connection details. Ask for a fresh link.</p></div>`;
+  }
+  if(g && !g.final){
+    const bt=Engine.battingTeam(g), batter=Engine.currentBatter(g);
+    const aw=g.totals.away.r, hw=g.totals.home.r;
+    return `${head}
+      <div class="board"><div class="board-row">
+        <div class="team-cell away ${g.half==='top'?'batting':''}">
+          <div class="tc-line"><span class="board-crest">${Crest.team(g.away.name,teamColor(g.away.name),26)}</span>
+            <div class="team-name ${g.half==='top'?'batting':''}">${esc(g.away.name)}</div></div>
+          <div class="team-score ${aw>hw?'lead':''}">${aw}</div></div>
+        <div class="center-cell">
+          <div class="inning"><span class="ord">${g.inning}</span><sup>${ord(g.inning).replace(/\d+/,'')}</sup></div>
+          <div class="half"><span class="arrow">${g.half==='top'?'▲':'▼'}</span></div></div>
+        <div class="team-cell home ${g.half==='bottom'?'batting':''}">
+          <div class="tc-line"><span class="board-crest">${Crest.team(g.home.name,teamColor(g.home.name),26)}</span>
+            <div class="team-name ${g.half==='bottom'?'batting':''}">${esc(g.home.name)}</div></div>
+          <div class="team-score ${hw>aw?'lead':''}">${hw}</div></div>
+      </div><div class="board-pulse"></div></div>
+      <div class="fieldwrap">${Field.bigDiamond(g,{})}</div>
+      <div class="countbar">
+        <div class="cgrp"><div class="clbl">B</div><div class="cdots">${dotRow(3,g.balls)}</div></div>
+        <div class="cgrp"><div class="clbl">S</div><div class="cdots">${dotRow(2,g.strikes)}</div></div>
+        <div class="cgrp"><div class="clbl">O</div><div class="cdots">${dotRow(2,g.outs,'out')}</div></div>
+        <div class="cbat"><span class="pill">AT BAT</span><span class="who">${esc(batter.name)}</span></div>
+      </div>
+      <div class="scroll">${boxScoreHTML(g)}<div style="height:24px"></div></div>`;
+  }
+  // no live game — show the latest final + recent results
+  const results=Standings.recentResults(6);
+  return `${head}<div class="scroll">
+    ${g&&g.final?`<div class="sec"><h3>Final</h3></div>${mvpCardHTML(g)}<div style="padding:0 4px">${renderBookStatic(g)}</div>`:''}
+    ${results.length?`<div class="sec"><h3>Recent Results</h3></div>
+      <div class="standings">${results.map(rg=>{const aw=rg.totals.away.r,hw=rg.totals.home.r;
+        return `<div class="result-row"><div class="teams">
+          <div class="ln ${aw>hw?'w':'l'}"><span class="tn">${esc(rg.away.name)}</span><span class="sc">${aw}</span></div>
+          <div class="ln ${hw>aw?'w':'l'}"><span class="tn">${esc(rg.home.name)}</span><span class="sc">${hw}</span></div>
+        </div></div>`;}).join('')}</div>`:
+      `<div class="empty"><div class="glyph">⚾</div><h2>No Live Game</h2>
+        <p>Hang tight — the scoreboard updates here automatically when the game starts.</p></div>`}
+    <div style="height:24px"></div></div>`;
+}
+function dotRow(n,fill,cls=''){
+  return Array.from({length:n},(_,i)=>`<span class="dot ${cls} ${i<fill?'fill':''}"></span>`).join('');
+}
+
+/* ---- AI write-ups (Phase D) ---- */
+function openAiSheet(){
+  const cfg=AI.readConfig()||{};
+  const on=AI.isConfigured();
+  Sheet.open(`
+    <div class="sheet-head"><h3>✨ AI Write-ups</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">
+      <div class="sync-status ${on?'live':''}"><span class="dot"></span>${on?'Enabled — using Claude':'Off (template write-ups)'}</div>
+      <p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:12px 0">
+        Generate vivid Game MVP recaps with Claude (model <b>claude-opus-4-8</b>). Paste an
+        Anthropic API key from <b>console.anthropic.com</b>. Without a key, the app uses built-in
+        template write-ups — everything still works offline.</p>
+      <label class="fld"><span>ANTHROPIC API KEY</span>
+        <input class="in" id="aiKey" type="password" placeholder="sk-ant-…" value="${cfg.apiKey?esc(cfg.apiKey):''}"></label>
+      <button class="cta" onclick="saveAi()">${on?'Update key':'Enable AI write-ups'}</button>
+      ${cfg.apiKey?`<button class="cta ghost" style="margin-top:10px" onclick="disableAi()">Turn off</button>`:''}
+      <div class="rsvp-note" style="padding:14px 4px 0">⚠️ The key is stored only in this browser and sent directly to Anthropic. Don't enable AI on a shared public deployment — anyone using it could read the key.</div>
+    </div>`);
+}
+function saveAi(){
+  const apiKey=(document.getElementById('aiKey').value||'').trim();
+  if(!apiKey){ toast('Paste an API key'); return; }
+  AI.writeConfig({enabled:true, apiKey});
+  Sheet.close(); toast('AI write-ups enabled'); render();
+}
+function disableAi(){
+  const cfg=AI.readConfig()||{};
+  AI.writeConfig({...cfg, enabled:false});
+  Sheet.close(); toast('AI write-ups off'); render();
 }
 
 /* ---- settings actions ---- */
@@ -2635,6 +2993,11 @@ Object.assign(window, {
   pickTnFormat, toggleTnTeam, createTournament, renderBracket, teamChip, matchCard, renderElimBracket, renderRoundRobin, openMatchResult, saveMatchResult,
   clearMatchResult, deleteTournament, renderSchedule, eventCard, openEventSheet, pickEvType, toLocalInput, saveEvent, deleteEvent, openEventDetail,
   rsvp, renderMore, nav, toggleTheme, exportData, wipe, esc,
+  Sync, initSync, openSyncSheet, saveSync, disconnectSync,
+  AI, aiMvpContext, enhanceMvpSummary, regenerateMvpSummary, openAiSheet, saveAi, disableAi,
+  aiRecapContext, enhanceGameRecap, recapBlock,
+  Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
+  fanLink, copyFanLink, bootFan, renderFan, dotRow,
 });
 
 /* ---- Pull-to-refresh (touch only) ----
@@ -2682,13 +3045,25 @@ function initPullToRefresh(){
 }
 
 /* ---- boot ---- */
+function registerSW(){
+  if('serviceWorker' in navigator){
+    // offline app shell; harmless if unsupported or on file://
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+}
 (function init(){
+  registerSW();
   try{ const t=localStorage.getItem('dt.theme'); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
+  const params=new URLSearchParams(location.search);
+  if(params.get('fan')==='1'){ bootFan(params); return; }   // public read-only viewer
   Store.load();
   Store.sub(()=>render());
+  Auth.onChange(()=>render());     // reflect sign-in / role changes in the UI
   render();
   initPullToRefresh();
   // dismiss the branded boot splash once the first paint is up
   const sp=document.getElementById('splash');
   if(sp) setTimeout(()=>{ sp.classList.add('hide'); setTimeout(()=>sp.remove(),460); }, 540);
+  // opt-in live sync: connect if the user has configured it (offline-safe)
+  initSync();
 })();

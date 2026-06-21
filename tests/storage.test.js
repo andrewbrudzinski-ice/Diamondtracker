@@ -1,7 +1,10 @@
 import './helpers/env.js';
 import { Store, freshStore } from './helpers/env.js';
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+
+// the remote backend is a module-level singleton; detach before each test
+beforeEach(() => Store.setRemote(null));
 
 test('defaultState seeds the expected shape', () => {
   const s = freshStore();
@@ -98,4 +101,77 @@ test('migrate: already-current state is unchanged', () => {
   const s = Store.load();
   assert.equal(s._v, 6);
   assert.equal(s.currentSeasonId, sid);
+});
+
+// ---- Phase B seam: async-capable remote backend ----
+test('with no remote, commit still persists locally (offline path intact)', () => {
+  const s = freshStore();
+  s.teams.push({ id: 't', name: 'Solo', players: [] });
+  Store.commit();
+  assert.equal(JSON.parse(globalThis.localStorage.getItem('diamondtracker.v1')).teams.length, 1);
+});
+
+test('commit writes through to a configured remote', () => {
+  freshStore();
+  const pushed = [];
+  Store.setRemote({ push: (st) => pushed.push(st) });
+  Store.get().teams.push({ id: 't', name: 'Synced', players: [] });
+  Store.commit();
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed[0].teams[0].name, 'Synced');
+  // and the local cache was written regardless
+  assert.equal(JSON.parse(globalThis.localStorage.getItem('diamondtracker.v1')).teams.length, 1);
+});
+
+test('a failing remote push never breaks the local commit', () => {
+  freshStore();
+  Store.setRemote({ push: () => { throw new Error('network down'); } });
+  Store.get().history.push({ id: 'g' });
+  assert.doesNotThrow(() => Store.commit());
+  assert.equal(Store.get().history.length, 1);
+});
+
+test('hydrate adopts remote state, migrates it, and notifies listeners', async () => {
+  freshStore();
+  let notified = null;
+  Store.sub((st) => { notified = st; });
+  // remote returns a legacy (v4) payload to prove migration runs on pull
+  Store.setRemote({
+    pull: async () => ({
+      game: null, history: [{ id: 'remote-g' }], teams: [], lineups: [],
+      seasons: [{ id: 's', created: 1 }], currentSeasonId: 's', schedule: [], _v: 4,
+    }),
+  });
+  const s = await Store.hydrate();
+  assert.equal(s.history[0].id, 'remote-g');
+  assert.equal(s._v, 6, 'pulled state is migrated to current version');
+  assert.equal(notified, s, 'listeners are notified of the hydrated state');
+});
+
+test('hydrate is a safe no-op with no remote', async () => {
+  const s = freshStore();
+  const out = await Store.hydrate();
+  assert.equal(out, s);
+});
+
+test('a remote subscribe push updates the store and notifies', () => {
+  freshStore();
+  let pushFn = null;
+  let notified = null;
+  Store.sub((st) => { notified = st; });
+  Store.setRemote({ subscribe: (onState) => { pushFn = onState; return () => { pushFn = null; }; } });
+  assert.equal(typeof pushFn, 'function', 'Store wired itself to the remote subscription');
+  pushFn({ game: null, history: [{ id: 'live' }], teams: [], lineups: [],
+    seasons: [{ id: 's', created: 1 }], currentSeasonId: 's', schedule: [], tournaments: [], _v: 6 });
+  assert.equal(Store.get().history[0].id, 'live');
+  assert.equal(notified, Store.get());
+});
+
+test('setRemote(null) detaches the remote subscription', () => {
+  freshStore();
+  let unsubscribed = false;
+  Store.setRemote({ subscribe: () => () => { unsubscribed = true; } });
+  Store.setRemote(null);
+  assert.equal(unsubscribed, true);
+  assert.equal(Store.getRemote(), null);
 });

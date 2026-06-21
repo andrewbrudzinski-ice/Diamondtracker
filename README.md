@@ -45,6 +45,34 @@ python3 -m http.server 8000
 Any static server (or GitHub Pages) works. All data persists in `localStorage` under the key
 `diamondtracker.v1`.
 
+**Installable (PWA):** served over HTTPS (e.g. GitHub Pages) the app ships a `manifest.json` +
+service worker (`sw.js`), so it can be installed to the home screen and launches offline (the
+app shell is cached; data is local already). Bump `CACHE` in `sw.js` to ship a new shell.
+
+## Live Sync (optional, Phase B)
+
+Share one game across devices in real time via Supabase — fully **opt-in and offline-first**
+(the app is unchanged with no network). Set it up under **More → 📡 Live Sync**; the one-time
+project/SQL/keys steps are in [`docs/SYNC.md`](docs/SYNC.md). Credentials live only in the
+device's `localStorage`, never in the repo. The Supabase client is lazy-loaded from a CDN only
+when you connect, so the default app has zero dependencies.
+
+## Accounts & roles (optional, Phase C)
+
+Sign-in (passwordless email magic link) with five roles — admin / manager /
+scorekeeper / player / fan — on top of Live Sync's Supabase project. **Row-Level
+Security enforces** who can write a shared room; fans/players are read-only. Set it
+up under **More → 👤 Account**; the SQL and role-promotion steps are in
+[`docs/AUTH.md`](docs/AUTH.md). Fully optional — the offline local app is unchanged.
+
+## AI write-ups (optional, Phase D)
+
+Generate Game MVP recaps with Claude (`claude-opus-4-8`) instead of the built-in template —
+**opt-in and offline-first**. Enable under **More → ✨ AI Write-ups** with an Anthropic API key;
+setup and the important client-side-key security note are in [`docs/AI.md`](docs/AI.md). The key
+lives only in the device's `localStorage`, never in the repo, and calls go directly to Anthropic
+via `fetch` (no SDK/build step).
+
 ## Tests
 
 The library modules are covered by a unit-test suite that `import`s them directly (no DOM, no

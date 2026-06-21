@@ -13,12 +13,13 @@
 - **What it is:** a mobile-first, offline-first, **no-framework / no-backend / no-build**
   softball & baseball scorekeeping web app (think a free, self-hosted GameChanger). Pure
   HTML/CSS/vanilla JS; all data in `localStorage`; event-sourced.
-- **Where we are:** **Phase A is DONE and merged to `main`** (PR #1). **Session 1 (ES-module
-  test harness)** and **Session 2 (per-player Runs scored)** are also **DONE** — see §4. The
-  old ~5,000-line single `index.html` is split into `css/styles.css` + ES-module `js/*.js`
-  files; an 88-assertion suite (`npm test`, Node's built-in runner) covers the library modules.
-- **What's next:** Session 3 — make `Store` async-capable (Phase B groundwork), then Phase B
-  (Supabase live-sync), C (accounts/roles/fan page), D (real AI + remaining stats). Details §4.
+- **Where we are:** **Phase A merged to `main`** (PR #1). **Sessions 1 (test harness), 2
+  (per-player Runs), and 3 (async-capable `Store`)** are DONE, plus a **4-round premium UI
+  pass** (home, live scoring, native motion, depth) — see §4. A 95-assertion suite
+  (`npm test`, Node's built-in runner) covers the library modules incl. the new Store seam.
+- **What's next:** Phase B — Supabase live game sync. The `Store` seam is ready: implement a
+  remote backend (`pull`/`push`/`subscribe`) and plug it in via `Store.setRemote(...)`; call
+  `Store.hydrate()` after boot. Then C (accounts/roles/fan page), D (real AI + remaining stats).
 - **How to run:** must be served over HTTP now (ES modules):
   `python3 -m http.server 8000` → open `http://localhost:8000/index.html`.
 - **Golden rules:** keep event-sourcing; keep all persistence behind `Store`; bump `_v` +
@@ -122,8 +123,10 @@ Highest-value, no-backend-needed items:
 1. ~~**Per-player Runs scored (R)**~~ — **DONE (Session 2).** Base occupants now carry identity
    as `{name,id}`; run-producing events stamp a `scored:[{id,name}]` list, and `Stats` credits
    each scorer's `r`. Legacy games (no `scored`) show R=0. *Top stat fix — completed.*
-2. **Fielding stats / defensive notation** (6-4-3 DPs, PO/A/E per fielder) — unblocks the
-   fielding box + Defensive Player of the Year. (Lowest priority per owner.)
+2. ~~**Fielding stats / defensive notation**~~ — **DONE.** PO/A/E are derived in `Stats` from
+   each located out (the ball's `zone` → the fielding team's roster position), powering a
+   Fielding box-score section and **Defensive Player of the Year**. Approximate (unlocated plays
+   aren't attributed; errors only when the play has a zone), no engine change/migration.
 3. **Rookie of the Year** (needs a per-player "first season" flag).
 4. **Rigorous double-elimination** losers-bracket routing (currently simplified).
 5. **Link bracket matches to the live scorer** ("play this match live").
@@ -162,28 +165,104 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   including engine run-attribution tests + an Engine→Stats integration test (incl. a
   persist/reload round-trip).
 
-### Session 3 — Phase B groundwork: make `Store` async-capable
-- Refactor `Store` so `get/commit/sub` can sit in front of an **async/remote backend** without
-  the UI noticing — e.g. keep an in-memory + localStorage cache with write-through, and an
-  internal `_backend` interface. **No Supabase yet**; just the seam, fully working offline.
-- **Acceptance:** app behaves identically offline; `Store` exposes a clean place to plug a
-  remote backend; tests green.
+### Session 3 — Phase B groundwork: make `Store` async-capable  ✅ DONE
+- `Store` now layers an optional **remote backend on top of** the localStorage cache (never in
+  front), so the app is identical offline. `get/commit/sub` are unchanged for the UI.
+- New API on `Store`:
+  - `setRemote(backend)` / `getRemote()` — plug in / inspect the remote. Passing `null`
+    detaches (and unsubscribes). A backend implements:
+    `async pull() -> state|null`, `push(state)` (sync or Promise, fire-and-forget), and
+    optional `subscribe(onState) -> unsubscribe` for live remote pushes.
+  - `hydrate()` — async; pulls from the remote, **migrates**, caches, and notifies. No-op
+    (resolves to current state) when no remote is set.
+  - `commit()` — still writes to localStorage + notifies synchronously, then write-through to
+    the remote; a failing/absent remote never breaks the offline path.
+  - remote `subscribe` pushes are routed through `applyRemote` (migrate → cache → notify).
+- **Acceptance met:** offline behavior identical; clean seam for Phase B; suite green (95,
+  incl. 7 new seam tests: write-through, failing-push resilience, hydrate+migrate, subscribe,
+  detach).
 
-### Session 4 — Phase B: Supabase live game sync (no accounts)
-- Stand up a Supabase project (Postgres + Realtime). Start with **live game sync only**: one
-  shared game-state row + a realtime subscription so multiple devices follow one live game.
-- Implement entirely **behind `Store`** (offline cache + write-through; app still works with no
-  network). Keep secrets/config out of the repo.
-- **Acceptance:** two browsers see the same live game update in real time; offline still works.
+### Session 4 — Phase B: Supabase live game sync (no accounts)  ✅ DONE (code) · ⏳ needs a live project to verify
+- `js/sync.js` (`Sync`) implements a Store-compatible remote over a Supabase table row keyed by
+  a **room code** (whole-state JSONB, last-write-wins). `makeRemote(client,room)` →
+  `{pull,push,subscribe}`; `connect(cfg)` lazy-loads the Supabase client from a CDN (zero deps
+  until you opt in). Mock-client tests in `tests/sync.test.js`.
+- Wired in `app.js`: `initSync()` connects on boot/save (offline-safe — failures fall back
+  silently), via `Store.setRemote()` + `Store.hydrate()`. UI: **More → 📡 Live Sync** sheet
+  (URL / anon key / room) with a status pill. Config lives only in `localStorage` (`dt.sync`),
+  never in the repo.
+- Setup: `supabase/schema.sql` (table + Realtime + open RLS) and `docs/SYNC.md`.
+- **Remaining to fully verify (manual):** create a Supabase project, run the SQL, paste URL +
+  anon key on two devices with the same room → confirm real-time mirroring. (Couldn't be run
+  in the authoring env: no Supabase project + no browser.)
+- **Note on model:** v1 shares the *whole* Store state (incl. teams/history), so it suits one
+  scorekeeper + followers. If you want game-only sharing (so each device keeps its own
+  teams/history), that's a focused follow-up to the adapter + a partial-state seam.
 
-### Session 5+ — Phase C (accounts, roles, fan page) & Phase D (real AI + fielding)
-- **Phase C:** Supabase Auth + five roles (admin/manager/scorekeeper/player/fan) with
-  Row-Level Security; self-service RSVPs; public read-only **fan live-game page**; push
-  notifications.
-- **Phase D:** replace `generateMvpSummary` template with real LLM calls (Anthropic API — use
-  the latest Claude model; the template fn is already isolated for the swap) for MVP summaries,
-  game recaps, season stories. Then close remaining stat gaps (**fielding stats / defensive
-  notation** → fielding box + Defensive Player of the Year).
+### Phase D (AI write-ups) — MVP recaps  ✅ DONE (code) · ⏳ needs an API key to verify live
+- `js/ai.js` (`AI`) calls Claude (**`claude-opus-4-8`**) directly from the browser via `fetch`
+  (no SDK/build), with the `anthropic-dangerous-direct-browser-access` header. `complete()` is
+  refusal-aware; `mvpPrompt`/`recapPrompt` are pure prompt builders; `fetch` is injectable →
+  mock-tested in `tests/ai.test.js` (no network).
+- Wired in `app.js`: `setGameMvp()` writes the deterministic template instantly, then
+  `enhanceMvpSummary()` upgrades it async (Claude → `Store.commit()` → re-render), tagged
+  **✨ AI**; any failure keeps the template. Cached on the game (`mvpSummary`/`mvpSummaryAI`) so
+  it isn't re-billed per render. UI: **More → ✨ AI Write-ups** sheet + a Regenerate button on
+  the MVP card. Key in `localStorage` (`dt.ai`) only — never in the repo. Docs: `docs/AI.md`.
+- **Remaining to verify (manual):** paste an Anthropic key, pick an MVP, confirm the recap.
+- **Ready-to-wire follow-ups:** `recapPrompt`/`gameRecap` exist + are tested but only MVP is
+  wired — add a "Generate recap" button on the box score / season views. **⚠️ Security:** the
+  key is client-side; don't enable AI on a public deploy — proxy it once Phase C adds a backend.
+
+### Phase C (accounts & roles) — core  ✅ DONE (code) · ⏳ needs a live project to verify
+- `js/auth.js` (`Auth`) rides the same Supabase project as Live Sync (shares the client from
+  `Sync.createClient`). Passwordless email magic-link sign-in; five roles
+  (admin/manager/scorekeeper/player/fan) read from a `diamondtracker_profiles` row. Capability
+  helpers (`canWrite`/`canManageTeams`/`isAdmin`) mirror RLS. Mock-client tests in
+  `tests/auth.test.js`.
+- Wired in `app.js`: `initSync()` shares one client with `Auth.init()`; `blockedByRole()`
+  guards the write chokepoints (`act`/`withUndo`/`startGame`/`finishGame`) so fans/players are
+  read-only; **More → 👤 Account** sheet (magic link, role chip, sign out); `Auth.onChange`
+  re-renders. RLS schema `supabase/auth.sql` (profiles + signup trigger + writer-only
+  insert/update; reads stay open for fans) and `docs/AUTH.md`.
+- **Security:** RLS enforces writes server-side; client checks are UX only. **Remaining to
+  verify (manual):** run `auth.sql`, enable Email auth + set Site/Redirect URLs, sign in,
+  promote yourself to admin, confirm a fan is read-only.
+- **Deferred:** push notifications (needs a service worker + push provider — a server piece,
+  out of scope for the no-backend build); in-app role editor + self-service RSVPs.
+
+### Phase C fan live-game page (#1)  ✅ DONE (code) · ⏳ needs a live project to verify
+- Public, read-only viewer via a deep link `?fan=1&room=CODE&sb=<url>&k=<anon key>`. `app.js`
+  `bootFan()` short-circuits the normal shell: creates a Supabase client from the link, sets a
+  read-only remote (`Store.setRemote` + `hydrate`; the fan never commits, so never pushes), and
+  `renderFan()` shows a live board + diamond + count + box score that auto-updates via the
+  remote subscribe → `Store` notify → render. `render()` early-returns to `renderFan()` when
+  `fanMode`. "📣 Copy fan link" button in the Live Sync sheet builds + copies the link.
+- **Verify (manual):** connect a writer, copy the fan link, open it in another browser/device →
+  watch the scoreboard update live with no sign-in.
+
+### Phase D fielding (#3)  ✅ DONE
+- `Stats` derives per-fielder **PO / A / E** from each located out: the event's `zone` maps to
+  a position, resolved against the fielding team's roster (`g[side].roster[].pos`). Rules
+  (approximate, rec-friendly): strikeout→C PO; flyout/sac→fielder PO; groundout→fielder A + 1B
+  PO (or 1B unassisted); DP→A + two PO; FC→A + PO; located error→fielder E. Unlocated plays and
+  position-less (manual) rosters aren't attributed. No engine change, no migration.
+- `gameBox` returns `sides[].fielders`; `boxScoreHTML` shows a **Fielding** table (PO/A/E).
+  `Stats.fieldLeaders()` ranks by chances (PO+A, errors as tiebreak) → **Defensive Player of
+  the Year** in `Awards.seasonAwards`. Tests in `tests/fielding.test.js` (10).
+
+### Post-roadmap extras (shipped)
+- **AI game recaps** wired into the box score ("✨ Write game recap" → `enhanceGameRecap` →
+  `AI.gameRecap`, cached as `recap`/`recapAI`). Season story still TODO.
+- **PWA / installable:** `manifest.json` + `icon.svg` + `sw.js` (cache-first app shell,
+  background refresh, same-origin only) registered at boot. Installs to home screen; launches
+  offline. Bump `CACHE` in `sw.js` for a new shell.
+
+### Still open / nice-to-have
+- **AI season story** (aggregate a season → narrative); **share card** (export box score as an
+  image); **player game logs / splits**; pitch counts; situational (RISP) splits.
+- Phase C follow-ups: in-app role editor, self-service RSVPs, push notifications (needs a
+  server/service-worker). Game-only sync mode (vs whole-state).
 
 ---
 
