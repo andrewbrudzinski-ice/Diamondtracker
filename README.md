@@ -45,13 +45,40 @@ python3 -m http.server 8000
 Any static server (or GitHub Pages) works. All data persists in `localStorage` under the key
 `diamondtracker.v1`.
 
+## Tests
+
+The library modules are covered by a unit-test suite that `import`s them directly (no DOM, no
+network, no dependencies). It runs on Node's built-in test runner — there is nothing to install:
+
+```bash
+npm test
+# equivalent to: node --test "tests/**/*.test.js"
+```
+
+```
+tests/
+├── helpers/
+│   ├── env.js          # installs an in-memory localStorage shim; freshStore() / seedState()
+│   └── fixtures.js     # builders for teams, games and play-by-play events
+├── storage.test.js     # Store: defaults, persistence, listeners, every migration (v?→5)
+├── engine.test.js      # Engine: hits, walks, outs, base advancement, run-limit & mercy rules
+├── stats.test.js       # Stats: batting/pitching lines, rate stats, leaders, box, spray
+├── standings.test.js   # Standings: W/L/T, run diff, sorting
+├── awards.test.js      # Awards: MVP / Pitcher of the Year / team records / MVP history
+├── schedule.test.js    # Schedule: CRUD, RSVPs, upcoming/past partition
+├── tournament.test.js  # Tournament: seeding, bracket gen, advancement, round-robin standings
+├── teams.test.js       # Teams: create/add/lineup
+├── crest.test.js       # Crest: monogram, color math, SVG output
+└── field.test.js       # Field: angle/zone geometry
+```
+
+`tests/helpers/env.js` stands in a minimal `localStorage` so the ES modules import cleanly under
+Node. The UI layer (`app.js`) is not unit-tested here — it requires a DOM; verify it by serving
+the app and clicking through.
+
 ## Sanity checks
 
 ```bash
 # syntax-check every module
 for f in js/*.js; do node --check "$f" || echo "FAIL: $f"; done
 ```
-
-> Note: the original regex-based `test*.js` harness (which extracted the single `<script>` block)
-> no longer applies after the split. Per the roadmap it should be rewritten to `import` the
-> modules directly — those assertions are unchanged in intent, just sourced from the module files.
