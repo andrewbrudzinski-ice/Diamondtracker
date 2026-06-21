@@ -1,0 +1,162 @@
+import './helpers/env.js';
+import { seedState } from './helpers/env.js';
+import { Stats } from '../js/stats.js';
+import * as F from './helpers/fixtures.js';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+// A player p1 with a full batting line, pitched to by pit1.
+function lineEvents() {
+  const b = { batterId: 'p1', side: 'away', pitcherId: 'pit1' };
+  return [
+    F.single(b),
+    F.double({ ...b, rbi: 1 }),
+    F.walk(b),
+    F.strikeout(b),
+    F.out(b),
+    F.sacFly(b), // rbi 1 by default
+  ];
+}
+
+function seedOneGame() {
+  return seedState({
+    teams: [F.team({ id: 't1', name: 'Test', players: [{ id: 'p1', name: 'Pat', num: '7' }] })],
+    history: [F.game({ id: 'g1', events: lineEvents(), awayRuns: 2, awayHits: 2 })],
+  });
+}
+
+test('batting line aggregates PA/AB/H/RBI correctly', () => {
+  seedOneGame();
+  const b = Stats.playerBatting('p1');
+  assert.equal(b.pa, 6);
+  assert.equal(b.ab, 4, 'walk and sac fly are not at-bats');
+  assert.equal(b.h, 2);
+  assert.equal(b.b1, 1);
+  assert.equal(b.b2, 1);
+  assert.equal(b.tb, 3);
+  assert.equal(b.bb, 1);
+  assert.equal(b.k, 1);
+  assert.equal(b.sf, 1);
+  assert.equal(b.rbi, 2);
+  assert.equal(b.games, 1);
+});
+
+test('rate stats derive from the line', () => {
+  seedOneGame();
+  const b = Stats.playerBatting('p1');
+  assert.equal(Stats.avg(b), 2 / 4);
+  assert.equal(Stats.obp(b), 3 / 6); // (H+BB)/(AB+BB+SF)
+  assert.equal(Stats.slg(b), 3 / 4); // TB/AB
+  assert.equal(Stats.ops(b), 3 / 6 + 3 / 4);
+});
+
+test('pitching line counts batters faced, outs and hits allowed', () => {
+  seedOneGame();
+  const p = Stats.playerPitching('pit1');
+  assert.equal(p.bf, 6);
+  assert.equal(p.h, 2);
+  assert.equal(p.bb, 1);
+  assert.equal(p.k, 1);
+  assert.equal(p.outs, 3, 'K + out + sac fly');
+  assert.equal(Stats.ipStr(p), '1.0');
+});
+
+test('league(false) excludes the live game', () => {
+  const s = seedState({
+    teams: [F.team({ players: [{ id: 'p1', name: 'Pat' }] })],
+    history: [],
+  });
+  s.game = F.game({ events: [F.single({ batterId: 'p1', side: 'away' })] });
+  const withLive = Stats.league(true).bat.p1;
+  const noLive = Stats.league(false).bat.p1;
+  assert.ok(withLive && withLive.h === 1);
+  assert.equal(noLive, undefined);
+});
+
+test('season filter scopes the tally', () => {
+  seedState({
+    teams: [F.team({ players: [{ id: 'p1', name: 'Pat' }] })],
+    history: [
+      F.game({ id: 'g1', seasonId: 's1', events: [F.homer({ batterId: 'p1', side: 'away' })] }),
+      F.game({ id: 'g2', seasonId: 's2', events: [F.homer({ batterId: 'p1', side: 'away' })] }),
+    ],
+  });
+  assert.equal(Stats.playerBatting('p1', false, 's1').hr, 1);
+  assert.equal(Stats.playerBatting('p1', false, null).hr, 2, 'career spans both seasons');
+});
+
+test('leaders ranks counting stats descending and resolves to teams', () => {
+  seedState({
+    teams: [F.team({ id: 't1', name: 'T', players: [
+      { id: 'p1', name: 'Slugger' }, { id: 'p2', name: 'Singles' },
+    ] })],
+    history: [F.game({ events: [
+      F.homer({ batterId: 'p1', side: 'away' }),
+      F.homer({ batterId: 'p1', side: 'away' }),
+      F.single({ batterId: 'p2', side: 'away' }),
+    ] })],
+  });
+  const hr = Stats.leaderTable('bat', 'hr');
+  assert.equal(hr[0].id, 'p1');
+  assert.equal(hr[0].val, 2);
+  assert.equal(hr[0].name, 'Slugger');
+});
+
+test('pitch leaders for ERA sort ascending (lower is better)', () => {
+  seedState({
+    teams: [F.team({ players: [{ id: 'pa', name: 'Ace' }, { id: 'pb', name: 'Batting Practice' }] })],
+    history: [F.game({ events: [
+      // ace: 3 outs, 0 runs
+      F.strikeout({ batterId: 'x', side: 'away', pitcherId: 'pa' }),
+      F.out({ batterId: 'x', side: 'away', pitcherId: 'pa' }),
+      F.out({ batterId: 'x', side: 'away', pitcherId: 'pa' }),
+      // bp: 3 outs but gives up a homer
+      F.homer({ batterId: 'y', side: 'home', pitcherId: 'pb' }),
+      F.out({ batterId: 'y', side: 'home', pitcherId: 'pb' }),
+      F.out({ batterId: 'y', side: 'home', pitcherId: 'pb' }),
+      F.out({ batterId: 'y', side: 'home', pitcherId: 'pb' }),
+    ] })],
+  });
+  const era = Stats.pitchLeaders('era', { minOuts: 3 });
+  assert.equal(era[0].id, 'pa', 'the scoreless pitcher ranks first');
+});
+
+test('gameBox splits batters by side and reports team totals', () => {
+  const g = F.game({
+    away: 'Visitors', home: 'Locals',
+    awayRuns: 2, homeRuns: 0, awayHits: 2,
+    events: lineEvents(),
+  });
+  seedState({ teams: [F.team({ players: [{ id: 'p1', name: 'Pat', num: '7' }] })], history: [] });
+  const box = Stats.gameBox(g);
+  assert.equal(box.sides.away.batters.length, 1);
+  assert.equal(box.sides.away.batters[0].name, 'Pat');
+  assert.equal(box.totals.away.r, 2);
+  assert.equal(box.totals.away.h, 2);
+  assert.ok(box.totals.away.lob >= 0);
+});
+
+test('spray data collects only located batted balls and filters by player', () => {
+  seedState({
+    teams: [],
+    history: [F.game({ events: [
+      F.single({ batterId: 'p1', side: 'away', hx: 40, hy: 30 }),
+      F.out({ batterId: 'p1', side: 'away', hx: 60, hy: 20 }),
+      F.single({ batterId: 'p2', side: 'away', hx: 50, hy: 50 }),
+      F.walk({ batterId: 'p1', side: 'away' }), // no location -> ignored
+    ] })],
+  });
+  assert.equal(Stats.sprayCount(), 3);
+  assert.equal(Stats.sprayData({ playerId: 'p1' }).length, 2);
+});
+
+test('milestones surface achieved career marks', () => {
+  const events = [];
+  for (let i = 0; i < 5; i++) events.push(F.homer({ batterId: 'p1', side: 'away' }));
+  seedState({
+    teams: [F.team({ players: [{ id: 'p1', name: 'Bomber' }] })],
+    history: [F.game({ events })],
+  });
+  const m = Stats.milestones('p1');
+  assert.ok(m.some((x) => x.label === '5 Home Runs'));
+});

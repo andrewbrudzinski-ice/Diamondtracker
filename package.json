@@ -1,0 +1,10 @@
+{
+  "name": "diamondtracker",
+  "version": "1.0.0",
+  "description": "Offline-first softball & baseball scorekeeping web app (no framework, no backend, no build step).",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\""
+  }
+}
