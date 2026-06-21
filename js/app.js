@@ -1336,6 +1336,20 @@ function boxScoreHTML(g){
             </div>`;}).join('')}
         </div>`;
     }
+    const fielders=(s.fielders||[]).filter(f=>f.line.po||f.line.a||f.line.e)
+      .sort((a,b)=>(b.line.po+b.line.a)-(a.line.po+a.line.a));
+    if(fielders.length){
+      html+=`<div class="box-sec">${esc(name)} · Fielding</div>
+        <div class="box-table">
+          <div class="bx-row bx-head field"><span class="bx-name">Fielder</span>
+            <span>PO</span><span>A</span><span>E</span></div>
+          ${fielders.map(p=>{const fl=p.line;
+            return `<div class="bx-row field">
+              <span class="bx-name">${esc(p.name)}${p.num?` <i>#${p.num}</i>`:''}</span>
+              <span>${fl.po}</span><span>${fl.a}</span><span class="${fl.e?'bx-err':''}">${fl.e}</span>
+            </div>`;}).join('')}
+        </div>`;
+    }
   });
   html+=`<div class="handoff" style="margin-top:10px">Updates live after every play</div>`;
   return html;

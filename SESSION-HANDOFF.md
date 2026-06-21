@@ -123,8 +123,10 @@ Highest-value, no-backend-needed items:
 1. ~~**Per-player Runs scored (R)**~~ — **DONE (Session 2).** Base occupants now carry identity
    as `{name,id}`; run-producing events stamp a `scored:[{id,name}]` list, and `Stats` credits
    each scorer's `r`. Legacy games (no `scored`) show R=0. *Top stat fix — completed.*
-2. **Fielding stats / defensive notation** (6-4-3 DPs, PO/A/E per fielder) — unblocks the
-   fielding box + Defensive Player of the Year. (Lowest priority per owner.)
+2. ~~**Fielding stats / defensive notation**~~ — **DONE.** PO/A/E are derived in `Stats` from
+   each located out (the ball's `zone` → the fielding team's roster position), powering a
+   Fielding box-score section and **Defensive Player of the Year**. Approximate (unlocated plays
+   aren't attributed; errors only when the play has a zone), no engine change/migration.
 3. **Rookie of the Year** (needs a per-player "first season" flag).
 4. **Rigorous double-elimination** losers-bracket routing (currently simplified).
 5. **Link bracket matches to the live scorer** ("play this match live").
@@ -239,10 +241,21 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
 - **Verify (manual):** connect a writer, copy the fan link, open it in another browser/device →
   watch the scoreboard update live with no sign-in.
 
-### Last — Phase D fielding (#3)
-- Per-fielder PO/A/E + defensive notation (6-4-3 DPs) → fielding box + Defensive Player of the
-  Year (pure local/event-sourced, fully testable). Also wire the already-built
-  `recapPrompt`/`gameRecap` into the box-score/season UI.
+### Phase D fielding (#3)  ✅ DONE
+- `Stats` derives per-fielder **PO / A / E** from each located out: the event's `zone` maps to
+  a position, resolved against the fielding team's roster (`g[side].roster[].pos`). Rules
+  (approximate, rec-friendly): strikeout→C PO; flyout/sac→fielder PO; groundout→fielder A + 1B
+  PO (or 1B unassisted); DP→A + two PO; FC→A + PO; located error→fielder E. Unlocated plays and
+  position-less (manual) rosters aren't attributed. No engine change, no migration.
+- `gameBox` returns `sides[].fielders`; `boxScoreHTML` shows a **Fielding** table (PO/A/E).
+  `Stats.fieldLeaders()` ranks by chances (PO+A, errors as tiebreak) → **Defensive Player of
+  the Year** in `Awards.seasonAwards`. Tests in `tests/fielding.test.js` (10).
+
+### Still open / nice-to-have (no item left from the original roadmap)
+- Wire the already-built `recapPrompt`/`gameRecap` (Phase D AI) into the box-score/season UI.
+- Phase C follow-ups: in-app role editor, self-service RSVPs, push notifications (needs a
+  server/service-worker). Game-only sync mode (vs whole-state). See the feature ideas the
+  assistant offered in chat for more.
 
 ---
 
