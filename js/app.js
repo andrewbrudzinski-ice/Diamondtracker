@@ -1896,6 +1896,7 @@ function startDrag(e,slot,list){
 function render(){
   const s=Store.get();
   const app=document.getElementById('app');
+  if(fanMode){ app.innerHTML = renderFan(); return; }   // public read-only viewer
   let body='';
   if(activeView==='score'){
     body = s.game ? renderScore(s.game) : emptyHome();
@@ -2703,6 +2704,7 @@ function openSyncSheet(){
       <label class="fld"><span>ROOM CODE</span>
         <input class="in" id="syncRoom" placeholder="e.g. lions-2026" value="${v(cfg.room)}"></label>
       <button class="cta" onclick="saveSync()">${Sync.isConfigured()?'Reconnect':'Connect'}</button>
+      ${Sync.isConfigured()?`<button class="cta ghost" style="margin-top:10px" onclick="copyFanLink()">📣 Copy fan link (read-only)</button>`:''}
       ${cfg.url?`<button class="cta ghost" style="margin-top:10px" onclick="disconnectSync()">Disconnect</button>`:''}
     </div>`);
 }
@@ -2763,6 +2765,102 @@ async function sendMagicLink(){
   }catch(e){ console.warn(e); toast('Could not send link — check Live Sync'); }
 }
 async function signOutNow(){ await Auth.signOut(); Sheet.close(); toast('Signed out'); render(); }
+
+/* ---- Public fan live-game page (Phase C) ----
+   A read-only viewer that follows a shared room via a deep link
+   (?fan=1&room=CODE&sb=<url>&k=<anon key>). Reads are open under RLS, so
+   no sign-in is needed; the viewer pulls + subscribes and never writes. */
+let fanMode=false;
+let _fanRoom='';
+let _fanStatus='connecting';   // 'connecting' | 'live' | 'error'
+
+// Build a shareable fan link from the current Live Sync config.
+function fanLink(){
+  const cfg=Sync.readConfig(); if(!Sync.isConfigured(cfg)) return '';
+  const p=new URLSearchParams({ fan:'1', room:cfg.room, sb:cfg.url, k:cfg.anonKey });
+  return `${location.origin}${location.pathname}?${p.toString()}`;
+}
+async function copyFanLink(){
+  const link=fanLink(); if(!link){ toast('Connect Live Sync first'); return; }
+  try{ await navigator.clipboard.writeText(link); toast('Fan link copied'); }
+  catch(e){ Sheet.open(`<div class="sheet-head"><h3>Fan link</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body"><p style="color:var(--ink-dim);font-size:13px">Copy this read-only link to share:</p>
+    <input class="in" readonly onclick="this.select()" value="${esc(link)}"></div>`); }
+}
+
+// Boot directly into the fan viewer (called from init when ?fan=1 is present).
+async function bootFan(params){
+  fanMode=true; _fanRoom=params.get('room')||''; _fanStatus='connecting';
+  document.body.classList.add('fan');
+  const sp=document.getElementById('splash'); if(sp) sp.remove();
+  Store.load();                       // local default; overwritten by the room state
+  Store.sub(()=>render());            // remote pushes -> applyRemote -> render
+  render();
+  const url=params.get('sb'), key=params.get('k');
+  if(!url||!key||!_fanRoom){ _fanStatus='error'; render(); return; }
+  try{
+    const client=await Sync.createClient({ enabled:true, url, anonKey:key, room:_fanRoom });
+    Store.setRemote(Sync.makeRemote(client, _fanRoom));   // fan never commits, so never pushes
+    await Store.hydrate();
+    _fanStatus='live';
+  }catch(e){ console.warn('fan connect failed',e); _fanStatus='error'; }
+  render();
+}
+
+function renderFan(){
+  const s=Store.get();
+  const g=s.game;
+  const head=`<div class="fan-bar">
+    <div class="logo"><div class="mark">⚾</div><div class="wordmark">Diamond<b>Tracker</b></div></div>
+    <span class="fan-tag ${_fanStatus}">${_fanStatus==='live'?'● LIVE':_fanStatus==='connecting'?'CONNECTING…':'OFFLINE'}</span>
+  </div>`;
+  if(_fanStatus==='error'){
+    return `${head}<div class="empty"><div class="glyph">📡</div><h2>Can't Connect</h2>
+      <p>This fan link is missing or has invalid connection details. Ask for a fresh link.</p></div>`;
+  }
+  if(g && !g.final){
+    const bt=Engine.battingTeam(g), batter=Engine.currentBatter(g);
+    const aw=g.totals.away.r, hw=g.totals.home.r;
+    return `${head}
+      <div class="board"><div class="board-row">
+        <div class="team-cell away ${g.half==='top'?'batting':''}">
+          <div class="tc-line"><span class="board-crest">${Crest.team(g.away.name,teamColor(g.away.name),26)}</span>
+            <div class="team-name ${g.half==='top'?'batting':''}">${esc(g.away.name)}</div></div>
+          <div class="team-score ${aw>hw?'lead':''}">${aw}</div></div>
+        <div class="center-cell">
+          <div class="inning"><span class="ord">${g.inning}</span><sup>${ord(g.inning).replace(/\d+/,'')}</sup></div>
+          <div class="half"><span class="arrow">${g.half==='top'?'▲':'▼'}</span></div></div>
+        <div class="team-cell home ${g.half==='bottom'?'batting':''}">
+          <div class="tc-line"><span class="board-crest">${Crest.team(g.home.name,teamColor(g.home.name),26)}</span>
+            <div class="team-name ${g.half==='bottom'?'batting':''}">${esc(g.home.name)}</div></div>
+          <div class="team-score ${hw>aw?'lead':''}">${hw}</div></div>
+      </div><div class="board-pulse"></div></div>
+      <div class="fieldwrap">${Field.bigDiamond(g,{})}</div>
+      <div class="countbar">
+        <div class="cgrp"><div class="clbl">B</div><div class="cdots">${dotRow(3,g.balls)}</div></div>
+        <div class="cgrp"><div class="clbl">S</div><div class="cdots">${dotRow(2,g.strikes)}</div></div>
+        <div class="cgrp"><div class="clbl">O</div><div class="cdots">${dotRow(2,g.outs,'out')}</div></div>
+        <div class="cbat"><span class="pill">AT BAT</span><span class="who">${esc(batter.name)}</span></div>
+      </div>
+      <div class="scroll">${boxScoreHTML(g)}<div style="height:24px"></div></div>`;
+  }
+  // no live game — show the latest final + recent results
+  const results=Standings.recentResults(6);
+  return `${head}<div class="scroll">
+    ${g&&g.final?`<div class="sec"><h3>Final</h3></div>${mvpCardHTML(g)}<div style="padding:0 4px">${renderBookStatic(g)}</div>`:''}
+    ${results.length?`<div class="sec"><h3>Recent Results</h3></div>
+      <div class="standings">${results.map(rg=>{const aw=rg.totals.away.r,hw=rg.totals.home.r;
+        return `<div class="result-row"><div class="teams">
+          <div class="ln ${aw>hw?'w':'l'}"><span class="tn">${esc(rg.away.name)}</span><span class="sc">${aw}</span></div>
+          <div class="ln ${hw>aw?'w':'l'}"><span class="tn">${esc(rg.home.name)}</span><span class="sc">${hw}</span></div>
+        </div></div>`;}).join('')}</div>`:
+      `<div class="empty"><div class="glyph">⚾</div><h2>No Live Game</h2>
+        <p>Hang tight — the scoreboard updates here automatically when the game starts.</p></div>`}
+    <div style="height:24px"></div></div>`;
+}
+function dotRow(n,fill,cls=''){
+  return Array.from({length:n},(_,i)=>`<span class="dot ${cls} ${i<fill?'fill':''}"></span>`).join('');
+}
 
 /* ---- AI write-ups (Phase D) ---- */
 function openAiSheet(){
@@ -2843,6 +2941,7 @@ Object.assign(window, {
   Sync, initSync, openSyncSheet, saveSync, disconnectSync,
   AI, aiMvpContext, enhanceMvpSummary, regenerateMvpSummary, openAiSheet, saveAi, disableAi,
   Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
+  fanLink, copyFanLink, bootFan, renderFan, dotRow,
 });
 
 /* ---- Pull-to-refresh (touch only) ----
@@ -2892,6 +2991,8 @@ function initPullToRefresh(){
 /* ---- boot ---- */
 (function init(){
   try{ const t=localStorage.getItem('dt.theme'); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
+  const params=new URLSearchParams(location.search);
+  if(params.get('fan')==='1'){ bootFan(params); return; }   // public read-only viewer
   Store.load();
   Store.sub(()=>render());
   Auth.onChange(()=>render());     // reflect sign-in / role changes in the UI

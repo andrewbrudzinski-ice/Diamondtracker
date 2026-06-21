@@ -55,13 +55,24 @@ the "writers" who can push changes to a shared room.
 - Reads are intentionally open (anon `select`) so the upcoming public **fan
   live-game page** can show a room without a login.
 
+## Public fan view
+
+Share a **read-only** live view of a room — no sign-in needed (reads are open under
+RLS). In the app → **More → 📡 Live Sync → 📣 Copy fan link**, then send the link.
+It opens straight into a fan scoreboard that follows the game live (board, diamond,
+count, box score) and updates automatically.
+
+The link carries the room code plus the project URL and **anon** key
+(`?fan=1&room=…&sb=…&k=…`). The anon key is public by design — RLS still blocks all
+writes — but treat the link as "anyone with it can watch this room." Set your
+Supabase **Site/Redirect URLs** so the link's origin is allowed.
+
 ## Not yet included (follow-ups)
 
-- **Public fan page** — a read-only shareable view of a room (next on the roadmap).
-- **Self-service RSVPs** by players, and an in-app **admin role editor** (today
-  roles are set via SQL).
+- Self-service **RSVPs** by players, and an in-app **admin role editor** (today roles
+  are set via SQL).
 - **Push notifications** — deferred; needs a service worker + push provider
-  (a server piece), which is out of scope for the no-backend build today.
+  (a server piece), out of scope for the no-backend build today.
 
 ## For developers
 

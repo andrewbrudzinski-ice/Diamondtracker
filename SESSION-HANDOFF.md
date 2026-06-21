@@ -229,14 +229,20 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
 - **Deferred:** push notifications (needs a service worker + push provider — a server piece,
   out of scope for the no-backend build); in-app role editor + self-service RSVPs.
 
-### Next — Phase C fan page (#1) then Phase D fielding (#3)
-- **Fan live-game page (#1):** a public, read-only shareable view of a room. Reads are already
-  open (anon `select`), so a viewer can `Sync.makeRemote(client, room).pull()` + subscribe and
-  render a live scoreboard/box without signing in. Likely a `?room=CODE&fan=1` deep link that
-  boots into a read-only view.
-- **Phase D fielding (#3, last):** per-fielder PO/A/E + defensive notation → fielding box +
-  Defensive Player of the Year (pure local/event-sourced, fully testable). Also: wire the
-  already-built `recapPrompt`/`gameRecap` into the box-score/season UI.
+### Phase C fan live-game page (#1)  ✅ DONE (code) · ⏳ needs a live project to verify
+- Public, read-only viewer via a deep link `?fan=1&room=CODE&sb=<url>&k=<anon key>`. `app.js`
+  `bootFan()` short-circuits the normal shell: creates a Supabase client from the link, sets a
+  read-only remote (`Store.setRemote` + `hydrate`; the fan never commits, so never pushes), and
+  `renderFan()` shows a live board + diamond + count + box score that auto-updates via the
+  remote subscribe → `Store` notify → render. `render()` early-returns to `renderFan()` when
+  `fanMode`. "📣 Copy fan link" button in the Live Sync sheet builds + copies the link.
+- **Verify (manual):** connect a writer, copy the fan link, open it in another browser/device →
+  watch the scoreboard update live with no sign-in.
+
+### Last — Phase D fielding (#3)
+- Per-fielder PO/A/E + defensive notation (6-4-3 DPs) → fielding box + Defensive Player of the
+  Year (pure local/event-sourced, fully testable). Also wire the already-built
+  `recapPrompt`/`gameRecap` into the box-score/season UI.
 
 ---
 
