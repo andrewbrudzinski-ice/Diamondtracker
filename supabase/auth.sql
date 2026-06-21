@@ -20,12 +20,6 @@ create table if not exists public.diamondtracker_profiles (
 
 alter table public.diamondtracker_profiles enable row level security;
 
--- Profiles are readable (to show names/roles); role changes are admin-only
--- (do them in the SQL editor or build an admin tool — see the promote snippet).
-drop policy if exists "profiles read" on public.diamondtracker_profiles;
-create policy "profiles read" on public.diamondtracker_profiles
-  for select using (true);
-
 -- Auto-create a profile (role 'fan') the moment a user signs up.
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -41,11 +35,24 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- The caller's role, for use in policies.
+-- The caller's role, for use in the policies below. Defined before any
+-- policy that references it.
 create or replace function public.dt_role()
 returns text language sql stable security definer set search_path = public as $$
   select role from public.diamondtracker_profiles where id = auth.uid()
 $$;
+
+-- Profiles are readable (to show names/roles in the app).
+drop policy if exists "profiles read" on public.diamondtracker_profiles;
+create policy "profiles read" on public.diamondtracker_profiles
+  for select using (true);
+
+-- Admins can change anyone's role (powers the in-app role editor). Non-admins
+-- cannot update profiles at all, so no one can self-promote.
+drop policy if exists "profiles admin update" on public.diamondtracker_profiles;
+create policy "profiles admin update" on public.diamondtracker_profiles
+  for update using (public.dt_role() = 'admin')
+            with check (public.dt_role() = 'admin');
 
 -- Tighten the shared-state table: keep open READ (fans follow live), but
 -- restrict writes to the three writer roles. Replaces the open Phase B
@@ -62,6 +69,7 @@ create policy "dt writers update" on public.diamondtracker_state
   for update using (public.dt_role() in ('admin','manager','scorekeeper'))
             with check (public.dt_role() in ('admin','manager','scorekeeper'));
 
--- ---- Promote a user to a role (run after they've signed in once) ----
+-- ---- Bootstrap the first admin (run once, after you've signed in) ----
+-- The in-app role editor needs at least one admin to exist first:
 -- update public.diamondtracker_profiles set role = 'admin'
 --   where email = 'you@example.com';

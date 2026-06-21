@@ -1176,6 +1176,10 @@ button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,i
 .role-chip.scorekeeper{color:var(--safe);border-color:var(--safe);background:rgba(61,220,132,.10)}
 .role-chip.player{color:var(--blue);border-color:var(--blue);background:rgba(77,159,255,.10)}
 .role-chip.fan{color:var(--ink-dim)}
+.role-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.role-row:first-of-type{border-top:none}
+.role-email{flex:1;min-width:0;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.role-select{width:auto;min-width:128px;margin-top:0;flex:0 0 auto;padding:8px 10px}
 
 /* ---- Public fan viewer ---- */
 .fan-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;

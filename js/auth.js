@@ -77,6 +77,22 @@ export const Auth = (()=> {
     await _apply(null);
   }
 
+  /* ---- admin: list profiles + change roles (RLS allows admins only) ---- */
+  async function listProfiles(){
+    if(!_client) throw new Error('Not connected');
+    const { data, error } = await _client.from(PROFILES).select('id,email,role').order('email');
+    if(error) throw error;
+    return data || [];
+  }
+  async function setRole(userId, role){
+    if(!_client) throw new Error('Not connected');
+    if(!ROLES.includes(role)) throw new Error('Invalid role');
+    const { error } = await _client.from(PROFILES).update({ role }).eq('id', userId);
+    if(error) throw error;
+    if(_user && _user.id === userId){ _role = role; _notify(); }   // changed our own → refresh
+  }
+
   return { PROFILES, ROLES, canWrite, canManageTeams, isAdmin, roleLabel,
-           onChange, current, state, init, detach, signInWithEmail, signOut };
+           onChange, current, state, init, detach, signInWithEmail, signOut,
+           listProfiles, setRole };
 })();

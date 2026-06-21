@@ -97,3 +97,52 @@ test('detach clears state', async () => {
   Auth.detach();
   assert.equal(Auth.current().signedIn, false);
 });
+
+// Mock client for the admin role-editor methods (list + update).
+function adminClient(profiles) {
+  const cap = {};
+  const client = {
+    _cap: cap,
+    auth: {
+      async getSession() { return { data: { session: { user: { id: 'admin1', email: 'admin@x.com' } } } }; },
+      onAuthStateChange() { return { data: { subscription: {} } }; },
+      async signOut() { return { error: null }; },
+    },
+    from() {
+      const b = {
+        select() { return b; },
+        order() { return { data: profiles, error: null }; },          // list
+        async maybeSingle() { return { data: { role: 'admin' }, error: null }; }, // role lookup
+        update(patch) { cap.patch = patch; return b; },
+        async eq(_c, v) { cap.id = v; return { error: null }; },        // update target
+      };
+      return b;
+    },
+  };
+  return client;
+}
+
+test('listProfiles returns the rows ordered by the client', async () => {
+  const rows = [{ id: 'u1', email: 'a@x.com', role: 'fan' }, { id: 'u2', email: 'b@x.com', role: 'scorekeeper' }];
+  await Auth.init(adminClient(rows));
+  assert.deepEqual(await Auth.listProfiles(), rows);
+});
+
+test('setRole updates the targeted profile and validates the role', async () => {
+  const c = adminClient([]);
+  await Auth.init(c);
+  await Auth.setRole('u2', 'manager');
+  assert.deepEqual(c._cap.patch, { role: 'manager' });
+  assert.equal(c._cap.id, 'u2');
+  await assert.rejects(() => Auth.setRole('u2', 'superuser'), /Invalid role/);
+});
+
+test('setRole on yourself refreshes local role', async () => {
+  const c = adminClient([]);
+  await Auth.init(c);              // signed in as admin1
+  let seen = null;
+  Auth.onChange((s) => { seen = s; });
+  await Auth.setRole('admin1', 'manager');
+  assert.equal(Auth.current().role, 'manager');
+  assert.equal(seen.role, 'manager');
+});

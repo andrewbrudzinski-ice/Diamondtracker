@@ -67,10 +67,18 @@ The link carries the room code plus the project URL and **anon** key
 writes — but treat the link as "anyone with it can watch this room." Set your
 Supabase **Site/Redirect URLs** so the link's origin is allowed.
 
+## Managing roles (in-app, admins)
+
+After bootstrapping the first admin (step 4 above), admins manage everyone else
+**in the app** — no more SQL. **More → 👤 Account → Manage roles** lists every
+member with a role dropdown; changing one writes the new role immediately
+(enforced by the `profiles admin update` RLS policy, so only admins can do it and
+no one can self-promote).
+
 ## Not yet included (follow-ups)
 
-- Self-service **RSVPs** by players, and an in-app **admin role editor** (today roles
-  are set via SQL).
+- Self-service **RSVPs** by players — needs linking an auth account to a roster
+  player (today RSVPs are keyed by roster `playerId`, accounts by auth user).
 - **Push notifications** — deferred; needs a service worker + push provider
   (a server piece), out of scope for the no-backend build today.
 
