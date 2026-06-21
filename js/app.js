@@ -2798,8 +2798,9 @@ function openAccountSheet(){
           ? '✓ Can score &amp; edit shared games'
           : '👁 Read-only — you can follow live games but not edit them'}</div>
       </div>
-      <button class="cta ghost" onclick="signOutNow()">Sign out</button>
-      <div class="rsvp-note" style="padding:14px 4px 0">Roles are set in Supabase (see <b>docs/AUTH.md</b>). New sign-ins start as <b>fan</b> until promoted.</div>`;
+      ${Auth.isAdmin(a.role)?`<button class="cta" onclick="openRoleManager()">Manage roles</button>`:''}
+      <button class="cta ghost" style="margin-top:10px" onclick="signOutNow()">Sign out</button>
+      <div class="rsvp-note" style="padding:14px 4px 0">New sign-ins start as <b>fan</b>. ${Auth.isAdmin(a.role)?'As an admin you can change roles below.':'Ask an admin to change your role.'}</div>`;
   } else {
     body=`<p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:0 0 12px">
         Sign in with a magic link — no password. We'll email you a link that signs you in.</p>
@@ -2820,6 +2821,33 @@ async function sendMagicLink(){
   }catch(e){ console.warn(e); toast('Could not send link — check Live Sync'); }
 }
 async function signOutNow(){ await Auth.signOut(); Sheet.close(); toast('Signed out'); render(); }
+
+/* ---- Admin: role editor ---- */
+async function openRoleManager(){
+  Sheet.open(`<div class="sheet-head"><h3>Manage Roles</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body" id="roleBody"><div class="empty-sm">Loading…</div></div>`);
+  try{ renderRoleList(await Auth.listProfiles()); }
+  catch(e){ console.warn(e); const b=document.getElementById('roleBody');
+    if(b) b.innerHTML=`<div class="empty-sm">Couldn't load profiles — admin access required.</div>`; }
+}
+function renderRoleList(profiles){
+  const b=document.getElementById('roleBody'); if(!b) return;
+  b.innerHTML = profiles.length ? `
+    <p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:0 0 12px">
+      Set each member's role. Writers (admin/manager/scorekeeper) can score shared games; players and fans are read-only.</p>
+    ${profiles.map(p=>`
+      <div class="role-row">
+        <div class="role-email">${esc(p.email||p.id)}</div>
+        <select class="in role-select" onchange="changeRole('${p.id}', this.value)">
+          ${Auth.ROLES.map(r=>`<option value="${r}" ${p.role===r?'selected':''}>${esc(Auth.roleLabel(r))}</option>`).join('')}
+        </select>
+      </div>`).join('')}` : `<div class="empty-sm">No members yet. Share the app and have them sign in once.</div>`;
+}
+async function changeRole(userId, role){
+  try{ await Auth.setRole(userId, role); toast('Role updated');
+       renderRoleList(await Auth.listProfiles()); render(); }
+  catch(e){ console.warn(e); toast('Update failed — admin only'); }
+}
 
 /* ---- Public fan live-game page (Phase C) ----
    A read-only viewer that follows a shared room via a deep link
@@ -2997,6 +3025,7 @@ Object.assign(window, {
   AI, aiMvpContext, enhanceMvpSummary, regenerateMvpSummary, openAiSheet, saveAi, disableAi,
   aiRecapContext, enhanceGameRecap, recapBlock,
   Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
+  openRoleManager, renderRoleList, changeRole,
   fanLink, copyFanLink, bootFan, renderFan, dotRow,
 });
 

@@ -258,11 +258,17 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   background refresh, same-origin only) registered at boot. Installs to home screen; launches
   offline. Bump `CACHE` in `sw.js` for a new shell.
 
+### Post-roadmap extras (shipped, cont.)
+- **In-app role editor** (Phase C follow-up): admins manage member roles from **More → Account
+  → Manage roles** (`Auth.listProfiles`/`setRole`; `profiles admin update` RLS policy in
+  `auth.sql`). Bootstrap the first admin via the SQL snippet, then everyone else in-app.
+
 ### Still open / nice-to-have
 - **AI season story** (aggregate a season → narrative); **share card** (export box score as an
   image); **player game logs / splits**; pitch counts; situational (RISP) splits.
-- Phase C follow-ups: in-app role editor, self-service RSVPs, push notifications (needs a
-  server/service-worker). Game-only sync mode (vs whole-state).
+- Phase C: **self-service RSVPs** (needs auth-account ↔ roster-player linking — RSVPs are keyed
+  by roster `playerId` today); **push notifications** (needs a server/service-worker).
+  Game-only sync mode (vs whole-state).
 
 ---
 
