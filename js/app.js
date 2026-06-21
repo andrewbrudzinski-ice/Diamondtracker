@@ -8,6 +8,7 @@ import { Stats } from './stats.js';
 import { Awards } from './awards.js';
 import { Schedule } from './schedule.js';
 import { Tournament } from './tournament.js';
+import { Sync } from './sync.js';
 
 const ord = n => n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th');
 const toast = (()=>{ let t; return msg=>{
@@ -2564,6 +2565,8 @@ function renderMore(){
       onclick="setView('tournaments')">🏆 Tournaments &amp; Brackets${Tournament.all().length?`<span class="more-badge">${Tournament.all().length}</span>`:''}</button>
     <div class="sec" style="padding:8px 0"><h3>Settings</h3></div>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
+      onclick="openSyncSheet()">📡 Live Sync<span class="sync-pill ${_syncState}">${_syncState==='live'?'LIVE':_syncState==='connecting'?'…':_syncState==='error'?'ERROR':'OFF'}</span></button>
+    <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="toggleTheme()">${theme==='light'?'🌙 Switch to Dark':'☀️ Switch to Light'}</button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="exportData()">⬇️ Export All Data (JSON)</button>
@@ -2588,6 +2591,65 @@ function nav(){
   const btn=([v,ic,lbl])=>`<button class="${activeView===v?'active':''}" onclick="setView('${v}')">
     <span class="ic">${ic}</span>${lbl}</button>`;
   return `<div class="nav">${ind}${tabs.map(btn).join('')}</div>`;
+}
+
+/* ---- Live Sync (Phase B) ---- */
+let _syncState='offline';   // 'offline' | 'connecting' | 'live' | 'error'
+// Connect on boot / after save if configured. Offline-first: failure is silent
+// (we stay on the local cache) beyond a status flag.
+async function initSync(opts={}){
+  if(!Sync.isConfigured()){ _syncState='offline'; return; }
+  _syncState='connecting'; if(opts.rerender) render();
+  try{
+    const remote=await Sync.connect();
+    Store.setRemote(remote);
+    await Store.hydrate();           // pull shared state, then live updates flow via subscribe
+    _syncState='live';
+    if(opts.toast) toast('Live Sync connected');
+  }catch(e){
+    console.warn('Live Sync failed; staying offline',e);
+    Store.setRemote(null); _syncState='error';
+    if(opts.toast) toast('Sync failed — working offline');
+  }
+  render();
+}
+function openSyncSheet(){
+  const cfg=Sync.readConfig()||{};
+  const v=s=>s?esc(s):'';
+  Sheet.open(`
+    <div class="sheet-head"><h3>📡 Live Sync</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">
+      <div class="sync-status ${_syncState}">
+        <span class="dot"></span>${_syncState==='live'?'Connected — sharing live':
+          _syncState==='connecting'?'Connecting…':_syncState==='error'?'Connection failed':'Offline (local only)'}</div>
+      <p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:12px 0">
+        Share one game across devices in real time. Create a free Supabase project, run the
+        setup SQL (see <b>docs/SYNC.md</b>), then paste your project URL + anon key and pick a
+        shared room code. Everything still works offline; sync is layered on top.</p>
+      <label class="fld"><span>SUPABASE URL</span>
+        <input class="in" id="syncUrl" placeholder="https://xxxx.supabase.co" value="${v(cfg.url)}"></label>
+      <label class="fld"><span>ANON KEY</span>
+        <input class="in" id="syncKey" placeholder="eyJ…" value="${v(cfg.anonKey)}"></label>
+      <label class="fld"><span>ROOM CODE</span>
+        <input class="in" id="syncRoom" placeholder="e.g. lions-2026" value="${v(cfg.room)}"></label>
+      <button class="cta" onclick="saveSync()">${Sync.isConfigured()?'Reconnect':'Connect'}</button>
+      ${cfg.url?`<button class="cta ghost" style="margin-top:10px" onclick="disconnectSync()">Disconnect</button>`:''}
+    </div>`);
+}
+function saveSync(){
+  const url=(document.getElementById('syncUrl').value||'').trim();
+  const anonKey=(document.getElementById('syncKey').value||'').trim();
+  const room=(document.getElementById('syncRoom').value||'').trim();
+  if(!url||!anonKey||!room){ toast('Fill in URL, key and room'); return; }
+  Sync.writeConfig({enabled:true, url, anonKey, room});
+  Sheet.close();
+  initSync({toast:true, rerender:true});
+}
+function disconnectSync(){
+  const cfg=Sync.readConfig()||{};
+  Sync.writeConfig({...cfg, enabled:false});   // keep creds for convenience, just disable
+  Store.setRemote(null); _syncState='offline';
+  Sheet.close(); toast('Disconnected — working offline'); render();
 }
 
 /* ---- settings actions ---- */
@@ -2635,6 +2697,7 @@ Object.assign(window, {
   pickTnFormat, toggleTnTeam, createTournament, renderBracket, teamChip, matchCard, renderElimBracket, renderRoundRobin, openMatchResult, saveMatchResult,
   clearMatchResult, deleteTournament, renderSchedule, eventCard, openEventSheet, pickEvType, toLocalInput, saveEvent, deleteEvent, openEventDetail,
   rsvp, renderMore, nav, toggleTheme, exportData, wipe, esc,
+  Sync, initSync, openSyncSheet, saveSync, disconnectSync,
 });
 
 /* ---- Pull-to-refresh (touch only) ----
@@ -2691,4 +2754,6 @@ function initPullToRefresh(){
   // dismiss the branded boot splash once the first paint is up
   const sp=document.getElementById('splash');
   if(sp) setTimeout(()=>{ sp.classList.add('hide'); setTimeout(()=>sp.remove(),460); }, 540);
+  // opt-in live sync: connect if the user has configured it (offline-safe)
+  initSync();
 })();

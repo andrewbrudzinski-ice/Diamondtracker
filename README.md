@@ -45,6 +45,14 @@ python3 -m http.server 8000
 Any static server (or GitHub Pages) works. All data persists in `localStorage` under the key
 `diamondtracker.v1`.
 
+## Live Sync (optional, Phase B)
+
+Share one game across devices in real time via Supabase — fully **opt-in and offline-first**
+(the app is unchanged with no network). Set it up under **More → 📡 Live Sync**; the one-time
+project/SQL/keys steps are in [`docs/SYNC.md`](docs/SYNC.md). Credentials live only in the
+device's `localStorage`, never in the repo. The Supabase client is lazy-loaded from a CDN only
+when you connect, so the default app has zero dependencies.
+
 ## Tests
 
 The library modules are covered by a unit-test suite that `import`s them directly (no DOM, no

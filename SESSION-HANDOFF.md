@@ -180,12 +180,22 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   incl. 7 new seam tests: write-through, failing-push resilience, hydrate+migrate, subscribe,
   detach).
 
-### Session 4 — Phase B: Supabase live game sync (no accounts)
-- Stand up a Supabase project (Postgres + Realtime). Start with **live game sync only**: one
-  shared game-state row + a realtime subscription so multiple devices follow one live game.
-- Implement entirely **behind `Store`** (offline cache + write-through; app still works with no
-  network). Keep secrets/config out of the repo.
-- **Acceptance:** two browsers see the same live game update in real time; offline still works.
+### Session 4 — Phase B: Supabase live game sync (no accounts)  ✅ DONE (code) · ⏳ needs a live project to verify
+- `js/sync.js` (`Sync`) implements a Store-compatible remote over a Supabase table row keyed by
+  a **room code** (whole-state JSONB, last-write-wins). `makeRemote(client,room)` →
+  `{pull,push,subscribe}`; `connect(cfg)` lazy-loads the Supabase client from a CDN (zero deps
+  until you opt in). Mock-client tests in `tests/sync.test.js`.
+- Wired in `app.js`: `initSync()` connects on boot/save (offline-safe — failures fall back
+  silently), via `Store.setRemote()` + `Store.hydrate()`. UI: **More → 📡 Live Sync** sheet
+  (URL / anon key / room) with a status pill. Config lives only in `localStorage` (`dt.sync`),
+  never in the repo.
+- Setup: `supabase/schema.sql` (table + Realtime + open RLS) and `docs/SYNC.md`.
+- **Remaining to fully verify (manual):** create a Supabase project, run the SQL, paste URL +
+  anon key on two devices with the same room → confirm real-time mirroring. (Couldn't be run
+  in the authoring env: no Supabase project + no browser.)
+- **Note on model:** v1 shares the *whole* Store state (incl. teams/history), so it suits one
+  scorekeeper + followers. If you want game-only sharing (so each device keeps its own
+  teams/history), that's a focused follow-up to the adapter + a partial-state seam.
 
 ### Session 5+ — Phase C (accounts, roles, fan page) & Phase D (real AI + fielding)
 - **Phase C:** Supabase Auth + five roles (admin/manager/scorekeeper/player/fan) with

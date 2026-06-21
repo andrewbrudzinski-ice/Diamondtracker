@@ -1130,3 +1130,15 @@ input.in,select.in{width:100%;margin-top:6px;background:var(--bg);border:1px sol
 button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,input:focus-visible,select:focus-visible{
   outline:2px solid var(--clay);outline-offset:2px}
 .empty .glyph{filter:drop-shadow(0 8px 22px rgba(0,0,0,.45))}
+
+/* ---- Live Sync status ---- */
+.sync-pill{margin-left:auto;font-family:var(--font-num);font-size:10px;font-weight:800;letter-spacing:.5px;
+  padding:3px 9px;border-radius:20px;border:1px solid var(--line);color:var(--ink-dim);background:var(--panel-2)}
+.sync-pill.live{color:var(--safe);border-color:var(--safe);background:rgba(61,220,132,.12)}
+.sync-pill.connecting{color:var(--gold);border-color:var(--gold)}
+.sync-pill.error{color:var(--out);border-color:var(--out)}
+.sync-status{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px}
+.sync-status .dot{width:9px;height:9px;border-radius:50%;background:var(--ink-faint);flex:0 0 auto}
+.sync-status.live .dot{background:var(--safe);box-shadow:0 0 10px var(--safe);animation:ring 1.6s infinite}
+.sync-status.connecting .dot{background:var(--gold)}
+.sync-status.error .dot{background:var(--out)}
