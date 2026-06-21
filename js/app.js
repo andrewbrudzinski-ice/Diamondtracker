@@ -2688,4 +2688,7 @@ function initPullToRefresh(){
   Store.sub(()=>render());
   render();
   initPullToRefresh();
+  // dismiss the branded boot splash once the first paint is up
+  const sp=document.getElementById('splash');
+  if(sp) setTimeout(()=>{ sp.classList.add('hide'); setTimeout(()=>sp.remove(),460); }, 540);
 })();
