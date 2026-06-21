@@ -1142,3 +1142,18 @@ button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,i
 .sync-status.live .dot{background:var(--safe);box-shadow:0 0 10px var(--safe);animation:ring 1.6s infinite}
 .sync-status.connecting .dot{background:var(--gold)}
 .sync-status.error .dot{background:var(--out)}
+
+/* ---- AI write-ups ---- */
+.ai-badge{display:inline-block;margin-left:8px;font-family:var(--font-num);font-size:9px;font-weight:800;
+  letter-spacing:.5px;color:var(--gold);border:1px solid rgba(255,201,77,.45);border-radius:20px;
+  padding:1px 7px;vertical-align:middle;white-space:nowrap}
+.mvp-card-summary.gen{color:var(--ink-dim);font-style:italic;display:flex;align-items:center;gap:8px}
+.ai-dots{display:inline-flex;gap:3px}
+.ai-dots i{width:5px;height:5px;border-radius:50%;background:var(--gold);display:inline-block;
+  animation:aiDot 1s ease-in-out infinite}
+.ai-dots i:nth-child(2){animation-delay:.15s} .ai-dots i:nth-child(3){animation-delay:.3s}
+@keyframes aiDot{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+.ai-regen{margin-top:10px;font-family:var(--font-display);text-transform:uppercase;letter-spacing:.5px;
+  font-size:11px;font-weight:700;color:var(--gold);background:rgba(255,201,77,.10);
+  border:1px solid rgba(255,201,77,.35);border-radius:20px;padding:6px 12px;transition:transform .08s}
+.ai-regen:active{transform:scale(.95)}

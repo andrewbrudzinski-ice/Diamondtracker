@@ -53,6 +53,14 @@ project/SQL/keys steps are in [`docs/SYNC.md`](docs/SYNC.md). Credentials live o
 device's `localStorage`, never in the repo. The Supabase client is lazy-loaded from a CDN only
 when you connect, so the default app has zero dependencies.
 
+## AI write-ups (optional, Phase D)
+
+Generate Game MVP recaps with Claude (`claude-opus-4-8`) instead of the built-in template —
+**opt-in and offline-first**. Enable under **More → ✨ AI Write-ups** with an Anthropic API key;
+setup and the important client-side-key security note are in [`docs/AI.md`](docs/AI.md). The key
+lives only in the device's `localStorage`, never in the repo, and calls go directly to Anthropic
+via `fetch` (no SDK/build step).
+
 ## Tests
 
 The library modules are covered by a unit-test suite that `import`s them directly (no DOM, no

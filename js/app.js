@@ -9,6 +9,7 @@ import { Awards } from './awards.js';
 import { Schedule } from './schedule.js';
 import { Tournament } from './tournament.js';
 import { Sync } from './sync.js';
+import { AI } from './ai.js';
 
 const ord = n => n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th');
 const toast = (()=>{ let t; return msg=>{
@@ -510,11 +511,48 @@ function setGameMvp(gameId, playerId){
   const g=findGameById(gameId);
   if(!g) return;
   g.mvpId=playerId;
-  g.mvpSummary=generateMvpSummary(g, playerId);
+  g.mvpSummary=generateMvpSummary(g, playerId);   // instant deterministic write-up
+  g.mvpSummaryAI=false;
   Store.commit(); Sheet.close();
   setView('score');
   const r=Stats.resolve(playerId);
   toast(`MVP: ${r?r.player.name:'selected'}`);
+  if(AI.isConfigured()) enhanceMvpSummary(gameId, playerId);  // upgrade async if a key is set
+}
+// Build the fact context an AI write-up needs from the box score.
+function aiMvpContext(g, playerId){
+  const box=Stats.gameBox(g);
+  const all=[...box.sides.away.batters, ...box.sides.home.batters];
+  const p=all.find(x=>x.id===playerId); if(!p) return null;
+  const r=Stats.resolve(playerId);
+  const onAway=box.sides.away.batters.some(x=>x.id===playerId);
+  const myRuns=onAway?g.totals.away.r:g.totals.home.r;
+  const oppRuns=onAway?g.totals.home.r:g.totals.away.r;
+  return {
+    name:p.name, num:p.num, team:r?r.team.name:'their team',
+    opponent:onAway?g.home.name:g.away.name,
+    statLine:mvpStatLine(p.line),
+    won:myRuns>oppRuns, tie:myRuns===oppRuns, myRuns, oppRuns,
+  };
+}
+// Replace the templated MVP blurb with a real Claude write-up; on any
+// failure the deterministic template already in place simply stays.
+async function enhanceMvpSummary(gameId, playerId){
+  const g=findGameById(gameId); if(!g) return;
+  const ctx=aiMvpContext(g, playerId); if(!ctx) return;
+  g._mvpGenerating=true; render();                  // transient; not committed yet
+  let text=null;
+  try{ text=await AI.mvpSummary(ctx); }
+  catch(e){ console.warn('AI MVP write-up failed; keeping template',e); }
+  const cur=findGameById(gameId); if(!cur) return;  // game may have changed during the await
+  cur._mvpGenerating=false;                          // clear before the single commit
+  if(text && cur.mvpId===playerId){ cur.mvpSummary=text; cur.mvpSummaryAI=true; }
+  Store.commit(); render();
+}
+function regenerateMvpSummary(gameId){
+  const g=findGameById(gameId); if(!g||!g.mvpId) return;
+  if(!AI.isConfigured()){ openAiSheet(); return; }
+  enhanceMvpSummary(gameId, g.mvpId);
 }
 function skipMvp(){ Sheet.close(); setView('score'); toast('Game saved'); }
 function findGameById(id){
@@ -571,13 +609,21 @@ function mvpCardHTML(g){
   const name=r?r.player.name:(p?p.name:'MVP');
   const num=r?r.player.num:(p?p.num:'');
   const statLine=p?mvpStatLine(p.line):'';
+  const aiBadge=g.mvpSummaryAI?`<span class="ai-badge" title="Written by Claude">✨ AI</span>`:'';
+  const summary = g._mvpGenerating
+    ? `<div class="mvp-card-summary gen"><span class="ai-dots"><i></i><i></i><i></i></span> Writing the recap…</div>`
+    : (g.mvpSummary?`<div class="mvp-card-summary">${esc(g.mvpSummary)}${aiBadge}</div>`:'');
+  const regen = (AI.isConfigured() && !g._mvpGenerating)
+    ? `<button class="ai-regen" onclick="event.stopPropagation();regenerateMvpSummary('${g.id}')" title="Regenerate with Claude">✨ ${g.mvpSummaryAI?'Regenerate':'Write with AI'}</button>`
+    : '';
   return `<div class="mvp-card">
     <span class="avatar">${Crest.player(name,num,color,false)}</span>
     <div class="mvp-card-body">
       <div class="mvp-card-tag">🏆 Game MVP</div>
       <div class="mvp-card-name">${esc(name)}</div>
       ${statLine?`<div class="mvp-card-stats">${statLine}</div>`:''}
-      ${g.mvpSummary?`<div class="mvp-card-summary">${esc(g.mvpSummary)}</div>`:''}
+      ${summary}
+      ${regen}
     </div>
   </div>`;
 }
@@ -2567,6 +2613,8 @@ function renderMore(){
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="openSyncSheet()">📡 Live Sync<span class="sync-pill ${_syncState}">${_syncState==='live'?'LIVE':_syncState==='connecting'?'…':_syncState==='error'?'ERROR':'OFF'}</span></button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
+      onclick="openAiSheet()">✨ AI Write-ups<span class="sync-pill ${AI.isConfigured()?'live':''}">${AI.isConfigured()?'ON':'OFF'}</span></button>
+    <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="toggleTheme()">${theme==='light'?'🌙 Switch to Dark':'☀️ Switch to Light'}</button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="exportData()">⬇️ Export All Data (JSON)</button>
@@ -2652,6 +2700,37 @@ function disconnectSync(){
   Sheet.close(); toast('Disconnected — working offline'); render();
 }
 
+/* ---- AI write-ups (Phase D) ---- */
+function openAiSheet(){
+  const cfg=AI.readConfig()||{};
+  const on=AI.isConfigured();
+  Sheet.open(`
+    <div class="sheet-head"><h3>✨ AI Write-ups</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">
+      <div class="sync-status ${on?'live':''}"><span class="dot"></span>${on?'Enabled — using Claude':'Off (template write-ups)'}</div>
+      <p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:12px 0">
+        Generate vivid Game MVP recaps with Claude (model <b>claude-opus-4-8</b>). Paste an
+        Anthropic API key from <b>console.anthropic.com</b>. Without a key, the app uses built-in
+        template write-ups — everything still works offline.</p>
+      <label class="fld"><span>ANTHROPIC API KEY</span>
+        <input class="in" id="aiKey" type="password" placeholder="sk-ant-…" value="${cfg.apiKey?esc(cfg.apiKey):''}"></label>
+      <button class="cta" onclick="saveAi()">${on?'Update key':'Enable AI write-ups'}</button>
+      ${cfg.apiKey?`<button class="cta ghost" style="margin-top:10px" onclick="disableAi()">Turn off</button>`:''}
+      <div class="rsvp-note" style="padding:14px 4px 0">⚠️ The key is stored only in this browser and sent directly to Anthropic. Don't enable AI on a shared public deployment — anyone using it could read the key.</div>
+    </div>`);
+}
+function saveAi(){
+  const apiKey=(document.getElementById('aiKey').value||'').trim();
+  if(!apiKey){ toast('Paste an API key'); return; }
+  AI.writeConfig({enabled:true, apiKey});
+  Sheet.close(); toast('AI write-ups enabled'); render();
+}
+function disableAi(){
+  const cfg=AI.readConfig()||{};
+  AI.writeConfig({...cfg, enabled:false});
+  Sheet.close(); toast('AI write-ups off'); render();
+}
+
 /* ---- settings actions ---- */
 function toggleTheme(){
   const cur=document.documentElement.getAttribute('data-theme')||'dark';
@@ -2698,6 +2777,7 @@ Object.assign(window, {
   clearMatchResult, deleteTournament, renderSchedule, eventCard, openEventSheet, pickEvType, toLocalInput, saveEvent, deleteEvent, openEventDetail,
   rsvp, renderMore, nav, toggleTheme, exportData, wipe, esc,
   Sync, initSync, openSyncSheet, saveSync, disconnectSync,
+  AI, aiMvpContext, enhanceMvpSummary, regenerateMvpSummary, openAiSheet, saveAi, disableAi,
 });
 
 /* ---- Pull-to-refresh (touch only) ----

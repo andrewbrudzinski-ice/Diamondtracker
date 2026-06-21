@@ -197,14 +197,28 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   scorekeeper + followers. If you want game-only sharing (so each device keeps its own
   teams/history), that's a focused follow-up to the adapter + a partial-state seam.
 
-### Session 5+ — Phase C (accounts, roles, fan page) & Phase D (real AI + fielding)
+### Phase D (AI write-ups) — MVP recaps  ✅ DONE (code) · ⏳ needs an API key to verify live
+- `js/ai.js` (`AI`) calls Claude (**`claude-opus-4-8`**) directly from the browser via `fetch`
+  (no SDK/build), with the `anthropic-dangerous-direct-browser-access` header. `complete()` is
+  refusal-aware; `mvpPrompt`/`recapPrompt` are pure prompt builders; `fetch` is injectable →
+  mock-tested in `tests/ai.test.js` (no network).
+- Wired in `app.js`: `setGameMvp()` writes the deterministic template instantly, then
+  `enhanceMvpSummary()` upgrades it async (Claude → `Store.commit()` → re-render), tagged
+  **✨ AI**; any failure keeps the template. Cached on the game (`mvpSummary`/`mvpSummaryAI`) so
+  it isn't re-billed per render. UI: **More → ✨ AI Write-ups** sheet + a Regenerate button on
+  the MVP card. Key in `localStorage` (`dt.ai`) only — never in the repo. Docs: `docs/AI.md`.
+- **Remaining to verify (manual):** paste an Anthropic key, pick an MVP, confirm the recap.
+- **Ready-to-wire follow-ups:** `recapPrompt`/`gameRecap` exist + are tested but only MVP is
+  wired — add a "Generate recap" button on the box score / season views. **⚠️ Security:** the
+  key is client-side; don't enable AI on a public deploy — proxy it once Phase C adds a backend.
+
+### Session 5+ — Phase C (accounts, roles, fan page) & rest of Phase D
 - **Phase C:** Supabase Auth + five roles (admin/manager/scorekeeper/player/fan) with
-  Row-Level Security; self-service RSVPs; public read-only **fan live-game page**; push
-  notifications.
-- **Phase D:** replace `generateMvpSummary` template with real LLM calls (Anthropic API — use
-  the latest Claude model; the template fn is already isolated for the swap) for MVP summaries,
-  game recaps, season stories. Then close remaining stat gaps (**fielding stats / defensive
-  notation** → fielding box + Defensive Player of the Year).
+  Row-Level Security; self-service RSVPs; public read-only **fan live-game page** (a natural
+  extension of the Phase B room sync — read-only viewer); push notifications.
+- **Phase D (remaining):** wire recap/season-story generation into the UI; then close the
+  remaining stat gap — **fielding stats / defensive notation** → fielding box + Defensive
+  Player of the Year (pure local/event-sourced).
 
 ---
 
