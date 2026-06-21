@@ -917,3 +917,216 @@ input.in,select.in{width:100%;margin-top:6px;background:var(--bg);border:1px sol
 .mr-name{flex:1;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mr-score{width:70px;height:48px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);
   text-align:center;font-family:var(--font-num);font-size:22px;font-weight:800;color:var(--ink)}
+
+/* ============================================================
+   ROUND 1 — Home moment + native motion
+   Ambient background, ESPN-style scores rail, player spotlight,
+   view transitions, and section/leader refinements. Additive.
+   ============================================================ */
+
+/* ---- Ambient aurora: slow drifting color mesh behind content ---- */
+.aurora{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.aurora::before,.aurora::after{content:"";position:absolute;border-radius:50%;
+  filter:blur(80px);opacity:.55;mix-blend-mode:screen;will-change:transform}
+.aurora::before{width:62vmax;height:62vmax;top:-22vmax;left:-12vmax;
+  background:radial-gradient(circle,rgba(255,107,53,.30),transparent 62%);
+  animation:auroraA 28s ease-in-out infinite alternate}
+.aurora::after{width:56vmax;height:56vmax;bottom:-20vmax;right:-14vmax;
+  background:radial-gradient(circle,rgba(77,159,255,.24),transparent 62%);
+  animation:auroraB 34s ease-in-out infinite alternate}
+@keyframes auroraA{from{transform:translate(0,0) scale(1)}to{transform:translate(13vmax,9vmax) scale(1.18)}}
+@keyframes auroraB{from{transform:translate(0,0) scale(1.06)}to{transform:translate(-11vmax,-7vmax) scale(1)}}
+[data-theme="light"] .aurora{opacity:.7}
+[data-theme="light"] .aurora::before{opacity:.4}
+[data-theme="light"] .aurora::after{opacity:.35}
+
+/* ---- View-enter transition (one-shot on tab change) ---- */
+.app.view-enter{animation:viewEnter .32s var(--ease-out)}
+@keyframes viewEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ---- Section header accent tick ---- */
+.sec h3{position:relative;padding-left:11px}
+.sec h3::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+  width:3px;height:13px;border-radius:2px;background:linear-gradient(var(--clay),var(--clay-deep))}
+
+/* ---- ESPN-style scores rail ---- */
+.score-rail{display:flex;gap:10px;padding:10px 14px 4px;overflow-x:auto;
+  scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.score-rail::-webkit-scrollbar{display:none}
+.score-rail{scrollbar-width:none}
+.score-chip{scroll-snap-align:start;flex:0 0 auto;min-width:142px;background:var(--panel);
+  border:1px solid var(--line);border-radius:16px;padding:11px 13px;box-shadow:var(--shadow);
+  transition:transform .08s}
+.score-chip:active{transform:scale(.97)}
+.sc-status{font-size:9px;letter-spacing:1px;font-weight:800;text-transform:uppercase;
+  color:var(--ink-dim);display:flex;align-items:center;gap:5px;margin-bottom:8px}
+.sc-status.live{color:var(--out)}
+.sc-status .live-dot{width:6px;height:6px;border-radius:50%;background:var(--out);animation:ring 1.4s infinite}
+.sc-line{display:flex;align-items:center;gap:7px;font-size:13px}
+.sc-line+.sc-line{margin-top:6px}
+.sc-line .crest-xs{width:18px;height:20px;flex:0 0 auto}
+.sc-line .nm{flex:1;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sc-line .rn{font-family:var(--font-num);font-weight:800;font-size:15px}
+.sc-line.win .rn{color:var(--clay)}
+.sc-line.lose{color:var(--ink-dim)}
+
+/* ---- Leader card team-color accent ---- */
+.leader-card{border-top:3px solid var(--lc,var(--clay))}
+
+/* ---- Player spotlight (home centerpiece) ---- */
+.spotlight{position:relative;margin:4px 14px 4px;border-radius:var(--radius-lg);overflow:hidden;
+  border:1px solid var(--line);box-shadow:var(--shadow-lg);cursor:pointer;transition:transform .1s}
+.spotlight:active{transform:scale(.99)}
+.spotlight .sl-bg{position:absolute;inset:0;z-index:0}
+.spotlight .sl-bg::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 30%,rgba(10,13,20,.55) 100%)}
+.spotlight .field-lines{position:absolute;inset:0;z-index:1;opacity:.12;
+  background-image:repeating-linear-gradient(120deg,transparent 0 42px,rgba(255,255,255,.5) 42px 44px)}
+.spotlight .sl-inner{position:relative;z-index:2;display:flex;align-items:center;gap:16px;padding:18px 18px 10px}
+.spotlight .sl-av{width:84px;height:84px;flex:0 0 auto;border:2px solid rgba(255,255,255,.3)}
+.spotlight .sl-meta{flex:1;min-width:0;color:#fff}
+.spotlight .sl-tag{font-size:10px;letter-spacing:1.5px;font-weight:800;text-transform:uppercase;color:var(--gold)}
+.spotlight .sl-name{font-family:var(--font-display);font-weight:700;text-transform:uppercase;
+  font-size:24px;line-height:1;letter-spacing:.5px;margin:5px 0 4px;text-shadow:0 2px 10px rgba(0,0,0,.5);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spotlight .sl-team{font-family:var(--font-num);font-size:12px;opacity:.9;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spotlight .sl-stats{position:relative;z-index:2;display:grid;grid-template-columns:repeat(4,1fr);
+  gap:1px;background:rgba(255,255,255,.12);border-top:1px solid rgba(255,255,255,.12)}
+.spotlight .sl-stat{background:var(--panel);padding:12px 4px;text-align:center}
+.spotlight .sl-stat b{font-family:var(--font-num);font-size:22px;font-weight:800;letter-spacing:-.5px;display:block;line-height:1}
+.spotlight .sl-stat small{font-size:9px;letter-spacing:1px;color:var(--ink-dim);font-weight:700;margin-top:3px;display:block}
+
+/* ============================================================
+   ROUND 2 — Live scoring screen
+   ============================================================ */
+/* ---- Scoreboard depth + live pulse ---- */
+.board{background:linear-gradient(180deg,var(--panel-2) 0%,var(--panel) 100%);
+  position:relative;overflow:hidden}
+.board::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 80% at 50% -20%,rgba(255,107,53,.10),transparent 60%)}
+.team-cell{position:relative;transition:background .25s}
+.team-cell.batting{background:linear-gradient(180deg,var(--clay-soft),transparent 70%)}
+.team-score.lead{color:var(--clay);text-shadow:0 2px 16px rgba(255,107,53,.35)}
+.center-cell .inning .ord{font-family:var(--font-num)}
+.board-pulse{height:2px;width:100%;position:relative;overflow:hidden;
+  background:linear-gradient(90deg,transparent,var(--clay),transparent);
+  background-size:200% 100%;animation:boardPulse 2.4s linear infinite;opacity:.7}
+@keyframes boardPulse{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ---- Count bar: batter avatar + glowing dots ---- */
+.cbat-av{width:32px;height:32px;flex:0 0 auto}
+.cbat-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cbat-info .who{font-family:var(--font-display);font-weight:700;font-size:15px;text-transform:uppercase;
+  letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1}
+.cbat-info .num{font-family:var(--font-num);color:var(--ink-dim);font-size:11px;font-weight:700}
+.cbat .pill{align-self:flex-start}
+.dot{transition:transform .15s var(--ease),box-shadow .15s}
+.dot.fill{box-shadow:0 0 8px rgba(255,107,53,.6);transform:scale(1.05)}
+.dot.out.fill{box-shadow:0 0 8px rgba(255,85,102,.6)}
+
+/* ---- Action buttons: depth, sheen, tactile press ---- */
+.btn{background:linear-gradient(180deg,var(--panel-3),var(--panel-2));
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset,var(--shadow-sm);position:relative;overflow:hidden}
+.btn::after{content:"";position:absolute;inset:0;border-radius:inherit;
+  background:radial-gradient(120% 80% at 50% 0%,rgba(255,255,255,.10),transparent 60%);
+  opacity:0;transition:opacity .15s;pointer-events:none}
+.btn:active::after{opacity:1}
+.btn:active{transform:scale(.94)}
+.btn.hit{background:linear-gradient(180deg,rgba(255,107,53,.22),rgba(255,107,53,.10))}
+.btn.ball{background:linear-gradient(180deg,rgba(95,181,106,.20),rgba(95,181,106,.10))}
+.btn.strike{background:linear-gradient(180deg,rgba(217,83,79,.20),rgba(217,83,79,.10))}
+.btn.foul{background:linear-gradient(180deg,rgba(231,184,79,.18),rgba(231,184,79,.08))}
+.btn.out{background:linear-gradient(180deg,rgba(217,83,79,.14),rgba(217,83,79,.06))}
+
+/* ---- Scoring celebration pill ---- */
+.fx-run{font-family:var(--font-display);font-weight:800;font-size:46px;text-transform:uppercase;
+  letter-spacing:2px;color:var(--safe);text-shadow:0 4px 24px rgba(61,220,132,.55);
+  animation:fxRun 1.1s var(--ease-out) forwards}
+@keyframes fxRun{0%{opacity:0;transform:translateY(24px) scale(.7)}
+  25%{opacity:1;transform:translateY(0) scale(1.05)}
+  70%{opacity:1;transform:translateY(0) scale(1)}
+  100%{opacity:0;transform:translateY(-30px) scale(1)}}
+
+/* ============================================================
+   ROUND 3 — Native motion & micro-interactions
+   ============================================================ */
+/* ---- Sliding bottom-nav indicator ---- */
+.nav button.active::before{display:none}          /* replaced by the sliding bar */
+.nav-ind{position:absolute;top:0;height:3px;pointer-events:none;
+  transition:left .3s var(--ease),width .3s var(--ease)}
+.nav-ind::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:30px;height:3px;border-radius:0 0 3px 3px;background:var(--clay);box-shadow:0 0 10px var(--clay)}
+.nav button .ic{transition:transform .2s var(--ease)}
+.nav button:active .ic{transform:scale(.86)}
+
+/* ---- Pull-to-refresh indicator ---- */
+.scroll{will-change:transform}
+.ptr{position:fixed;top:calc(env(safe-area-inset-top) + 8px);left:50%;width:36px;height:36px;
+  border-radius:50%;background:var(--panel-2);border:1px solid var(--line);box-shadow:var(--shadow);
+  display:flex;align-items:center;justify-content:center;color:var(--clay);font-size:18px;font-weight:800;
+  z-index:40;opacity:0;transform:translate(-50%,-24px);pointer-events:none}
+.ptr.show{opacity:1}
+.ptr.snap{transition:transform .25s var(--ease-out),opacity .2s}
+.ptr .ptr-ic{display:block;line-height:1}
+.ptr.spin .ptr-ic{animation:ptrSpin .7s linear infinite}
+@keyframes ptrSpin{to{transform:rotate(360deg)}}
+
+/* ---- Broader tap feedback on interactive rows ---- */
+.std-row,.result-row,.lb-row,.rec-row,.pl-row,.rsvp-row,
+.mvp-pick,.season-chip,.bench-chip{transition:background .12s,transform .08s}
+.std-row:active,.result-row:active,.lb-row:active,.rec-row:active,.pl-row:active{
+  background:var(--panel-2)}
+.icon-btn:active,.tool:active,.add-btn:active{transform:scale(.94)}
+.cta{transition:transform .08s,background .12s}
+.cta:active{transform:scale(.985)}
+.leader-card{transition:transform .1s,box-shadow .15s}
+.leader-card:active{transform:scale(.97)}
+
+/* ============================================================
+   ROUND 4 — Depth & polish pass
+   ============================================================ */
+/* ---- Branded boot splash (loading state) ---- */
+.splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:16px;background:radial-gradient(120% 70% at 50% 32%,#141925,var(--bg));
+  transition:opacity .42s ease,visibility .42s}
+[data-theme="light"] .splash{background:radial-gradient(120% 70% at 50% 32%,#fff,var(--bg))}
+.splash.hide{opacity:0;visibility:hidden;pointer-events:none}
+.splash-mark{width:74px;height:74px;border-radius:22px;
+  background:linear-gradient(135deg,var(--clay),var(--clay-deep));display:flex;align-items:center;
+  justify-content:center;font-size:38px;box-shadow:var(--shadow-clay);animation:splashPop .5s var(--ease)}
+.splash-word{font-family:var(--font-display);font-weight:700;font-size:26px;letter-spacing:.5px;text-transform:uppercase}
+.splash-word b{color:var(--clay)}
+.splash-bar{width:120px;height:4px;border-radius:3px;background:var(--panel-2);overflow:hidden}
+.splash-bar i{display:block;height:100%;width:38%;border-radius:3px;
+  background:linear-gradient(90deg,var(--clay),var(--gold));animation:splashBar 1.1s ease-in-out infinite}
+@keyframes splashPop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+@keyframes splashBar{0%{transform:translateX(-130%)}100%{transform:translateX(330%)}}
+
+/* ---- Skeleton shimmer utility (reusable loading placeholder) ---- */
+.skel{position:relative;overflow:hidden;background:var(--panel-2);border-radius:10px}
+.skel::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);
+  background-size:200% 100%;animation:shimmer 1.3s infinite}
+.skel.line{height:12px;margin:6px 0}
+.skel.av{width:44px;height:44px;border-radius:50%}
+
+/* ---- Surface depth sweep: subtle top sheen + inset highlight ---- */
+.card,.standings,.box-table,.lb-card,.tn-card,.event-card,.award-card,.rec-list,
+.season-table,.spotlight,.score-chip,.leader-card{
+  background-image:linear-gradient(180deg,rgba(255,255,255,.028),transparent 42%)}
+.card,.standings,.lb-card,.tn-card,.event-card,.award-card,.rec-list,.spotlight{
+  box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.05)}
+[data-theme="light"] .card,[data-theme="light"] .standings,[data-theme="light"] .lb-card,
+[data-theme="light"] .tn-card,[data-theme="light"] .event-card,[data-theme="light"] .award-card,
+[data-theme="light"] .rec-list,[data-theme="light"] .spotlight{
+  box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.6)}
+
+/* ---- Slim styled scrollbars + text selection + focus rings ---- */
+.scroll::-webkit-scrollbar{width:6px}
+.scroll::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+.scroll::-webkit-scrollbar-track{background:transparent}
+::selection{background:rgba(255,107,53,.30);color:#fff}
+button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--clay);outline-offset:2px}
+.empty .glyph{filter:drop-shadow(0 8px 22px rgba(0,0,0,.45))}

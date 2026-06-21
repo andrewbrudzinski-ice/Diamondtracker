@@ -20,6 +20,9 @@ function makeGame(rules) {
   });
 }
 const last = (g) => g.events[g.events.length - 1];
+const nameAt = (g, i) => Engine.runnerName(g.bases[i]);
+// a pre-placed runner object, as the engine now stores them
+const R = (name, id) => ({ name, id: id || null });
 
 test('newGame initializes a clean top-of-1st state', () => {
   const g = makeGame();
@@ -34,7 +37,9 @@ test('newGame initializes a clean top-of-1st state', () => {
 test('single puts the batter on first and records a hit', () => {
   const g = makeGame();
   Engine.actions.single(g);
-  assert.deepEqual(g.bases, ['A1', null, null]);
+  assert.equal(nameAt(g, 0), 'A1');
+  assert.equal(g.bases[0].id, 'a1', 'runner identity travels on the base');
+  assert.deepEqual([g.bases[1], g.bases[2]], [null, null]);
   assert.equal(g.totals.away.h, 1);
   assert.equal(g.totals.away.r, 0);
   assert.equal(g.battingIndex.top, 1, 'batting order advances');
@@ -74,26 +79,28 @@ test('grand slam clears the bases for four runs', () => {
 
 test('walk with a runner on first is a clean force, no run', () => {
   const g = makeGame();
-  g.bases = ['R1', null, null];
+  g.bases = [R('R1', 'r1'), null, null];
   Engine.actions.walkBtn(g);
-  assert.deepEqual(g.bases, ['A1', 'R1', null]);
+  assert.deepEqual([nameAt(g, 0), nameAt(g, 1), g.bases[2]], ['A1', 'R1', null]);
   assert.equal(g.totals.away.r, 0);
   assert.equal(last(g).type, 'walk');
 });
 
-test('bases-loaded walk forces in exactly one run', () => {
+test('bases-loaded walk forces in exactly one run, credited to the runner from third', () => {
   const g = makeGame();
-  g.bases = ['R1', 'R2', 'R3'];
+  g.bases = [R('R1', 'r1'), R('R2', 'r2'), R('R3', 'r3')];
   Engine.actions.walkBtn(g);
   assert.equal(g.totals.away.r, 1);
-  assert.deepEqual(g.bases, ['A1', 'R1', 'R2']);
+  assert.deepEqual([nameAt(g, 0), nameAt(g, 1), nameAt(g, 2)], ['A1', 'R1', 'R2']);
+  assert.deepEqual(last(g).scored, [{ id: 'r3', name: 'R3' }]);
 });
 
 test('four balls draws a walk automatically', () => {
   const g = makeGame();
   Engine.actions.ball(g); Engine.actions.ball(g);
   Engine.actions.ball(g); Engine.actions.ball(g);
-  assert.deepEqual(g.bases, ['A1', null, null]);
+  assert.equal(nameAt(g, 0), 'A1');
+  assert.deepEqual([g.bases[1], g.bases[2]], [null, null]);
   assert.equal(last(g).type, 'walk');
 });
 
@@ -145,7 +152,8 @@ test('error advances the batter without recording an out', () => {
   Engine.actions.error(g);
   assert.equal(g.outs, 0);
   assert.equal(g.totals.home.e, 1, 'charged to the fielding team');
-  assert.deepEqual(g.bases, ['A1', null, null]);
+  assert.equal(nameAt(g, 0), 'A1');
+  assert.deepEqual([g.bases[1], g.bases[2]], [null, null]);
   assert.equal(last(g).type, 'error');
 });
 
@@ -173,10 +181,11 @@ test('double play records two outs', () => {
 
 test("fielder's choice puts the batter on first and retires the lead runner", () => {
   const g = makeGame();
-  g.bases = [null, null, 'R3'];
+  g.bases = [null, null, R('R3', 'r3')];
   Engine.actions.fieldersChoice(g);
   assert.equal(g.outs, 1);
-  assert.deepEqual(g.bases, ['A1', null, null]);
+  assert.equal(nameAt(g, 0), 'A1');
+  assert.deepEqual([g.bases[1], g.bases[2]], [null, null]);
   assert.equal(last(g).type, 'fc');
 });
 
@@ -236,6 +245,50 @@ test('configured mercy rule triggers on a large lead at the half', () => {
   g.totals.away.r = 12; g.totals.home.r = 1;
   g.outs = 0; g.balls = 0; g.strikes = 0;
   assert.equal(Engine.isMercyOrDone(g), true);
+});
+
+// ---- run attribution (per-player Runs scored) ------------------
+test('a solo home run credits the batter as the scorer', () => {
+  const g = makeGame();
+  Engine.actions.homer(g);
+  assert.deepEqual(last(g).scored, [{ id: 'a1', name: 'A1' }]);
+});
+
+test('a grand slam stamps all four scorers, lead runners first', () => {
+  const g = makeGame();
+  g.bases = [R('R1', 'r1'), R('R2', 'r2'), R('R3', 'r3')];
+  Engine.actions.homer(g);
+  assert.deepEqual(last(g).scored, [
+    { id: 'r3', name: 'R3' }, { id: 'r2', name: 'R2' },
+    { id: 'r1', name: 'R1' }, { id: 'a1', name: 'A1' },
+  ]);
+});
+
+test('a run-scoring single credits the runner, not the batter', () => {
+  const g = makeGame();
+  g.bases = [null, null, R('R3', 'r3')];
+  Engine.actions.single(g);
+  assert.equal(g.totals.away.r, 1);
+  assert.equal(last(g).rbi, 1, 'the batter still gets the RBI');
+  assert.deepEqual(last(g).scored, [{ id: 'r3', name: 'R3' }], 'R goes to the runner');
+  assert.equal(nameAt(g, 0), 'A1', 'batter ends up on first');
+});
+
+test('a run cap credits only the runners who actually scored', () => {
+  const g = makeGame({ runLimitPerInning: 1, openFinalInning: true });
+  g.bases = [R('R1', 'r1'), R('R2', 'r2'), R('R3', 'r3')];
+  Engine.actions.homer(g); // four would score, but the cap allows one
+  assert.equal(g.totals.away.r, 1);
+  const hitEv = g.events.find((e) => e.type === 'hit');
+  assert.deepEqual(hitEv.scored, [{ id: 'r3', name: 'R3' }], 'lead runner credited under the cap');
+});
+
+test('runnerName and runnerKey read both object and legacy-string occupants', () => {
+  assert.equal(Engine.runnerName({ name: 'Pat', id: 'p1' }), 'Pat');
+  assert.equal(Engine.runnerName('LegacyName'), 'LegacyName');
+  assert.equal(Engine.runnerName(null), '');
+  assert.equal(Engine.runnerKey({ name: 'Pat', id: 'p1' }), 'p1');
+  assert.equal(Engine.runnerKey('LegacyName'), 'LegacyName');
 });
 
 test('RULE_PRESETS expose the documented presets', () => {

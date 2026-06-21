@@ -30,7 +30,7 @@ export const Store = (()=> {
       currentSeasonId:seasonId,
       schedule:[],         // scheduled games / practices / tournaments + RSVPs
       tournaments:[],      // brackets: single/double elim, round robin
-      _v:5
+      _v:6
     };
   }
   // forward-compatible migrations so old saves never crash
@@ -54,6 +54,18 @@ export const Store = (()=> {
     if(s._v<5){
       if(!s.tournaments) s.tournaments=[];
       s._v=5;
+    }
+    if(s._v<6){
+      // runner identity now travels on the bases as {name,id} so runs can
+      // be attributed to the scorer. Normalize any in-progress live game's
+      // bases (older saves stored bare name strings). Finished games in
+      // history keep their string-based event snapshots — readers tolerate
+      // both shapes, and legacy box scores simply show R=0 (un-attributed).
+      if(s.game && Array.isArray(s.game.bases)){
+        s.game.bases = s.game.bases.map(b =>
+          b==null ? null : (typeof b==='string' ? {name:b, id:null} : b));
+      }
+      s._v=6;
     }
     return s;
   }

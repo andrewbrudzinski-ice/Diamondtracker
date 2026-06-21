@@ -69,7 +69,8 @@ tests/
 ├── tournament.test.js  # Tournament: seeding, bracket gen, advancement, round-robin standings
 ├── teams.test.js       # Teams: create/add/lineup
 ├── crest.test.js       # Crest: monogram, color math, SVG output
-└── field.test.js       # Field: angle/zone geometry
+├── field.test.js       # Field: angle/zone geometry
+└── integration.test.js # Engine -> Stats: per-player runs end-to-end (+ reload round-trip)
 ```
 
 `tests/helpers/env.js` stands in a minimal `localStorage` so the ES modules import cleanly under

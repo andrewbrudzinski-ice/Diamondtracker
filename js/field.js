@@ -1,4 +1,5 @@
 import { Crest } from './crest.js';
+import { Engine } from './engine.js';
 
 export const Field = (()=>{
   // canonical anchor points (x,y) in the 0..100 field space
@@ -39,7 +40,7 @@ export const Field = (()=>{
     const armed=opts.armed;
     const domRunners=opts.domRunners;  // when true, runner pucks are drawn as HTML overlay
     const baseOn=i=>g.bases[i]!=null && !domRunners;
-    const runnerLabel=i=>{ const v=g.bases[i]; return v?Crest.initials(String(v)):''; };
+    const runnerLabel=i=>{ const v=g.bases[i]; return v?Crest.initials(Engine.runnerName(v)):''; };
     // grass + dirt
     return `<svg class="bigfield ${armed?'armed':''}" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet"
         ${armed?'onclick="onFieldTap(event,this)"':''}>
@@ -143,17 +144,19 @@ export const Field = (()=>{
     let arrows='', dots='';
     // batter starts at home (index -1 -> shown leaving plate)
     const moves=[];
-    // existing runners (0,1,2) -> compare before/after by identity
+    // existing runners (0,1,2) -> compare before/after by runner key
+    // (id or name) so it survives JSON round-trips and legacy strings.
+    const key=Engine.runnerKey;
     before.forEach((who,bi)=>{
       if(who==null) return;
       // find this runner in 'after'
-      let dest=after.findIndex(a=>a===who);
+      let dest=after.findIndex(a=>a!=null && key(a)===key(who));
       if(dest===-1) dest=3; // scored (or out) -> treat as home if scored
       if(dest!==bi) moves.push({from:bi,to:dest,who});
     });
     // batter: appears in 'after' but not 'before'
     after.forEach((who,ai)=>{
-      if(who!=null && !before.includes(who)){
+      if(who!=null && !before.some(b=>b!=null && key(b)===key(who))){
         moves.push({from:'H',to:ai,who,batter:true});
       }
     });
@@ -171,7 +174,7 @@ export const Field = (()=>{
       const xy=baseXY(ai);
       dots+=`<g><circle cx="${xy[0]}" cy="${xy[1]}" r="4.4" fill="#ffc94d" stroke="#0a0d14" stroke-width=".6"/>
         <text x="${xy[0]}" y="${xy[1]+1.5}" text-anchor="middle" font-size="3.2" font-weight="800"
-          fill="#0a0d14" font-family="Archivo,sans-serif">${Crest.initials(String(who))}</text></g>`;
+          fill="#0a0d14" font-family="Archivo,sans-serif">${Crest.initials(Engine.runnerName(who))}</text></g>`;
     });
 
     return `<svg class="replay-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">

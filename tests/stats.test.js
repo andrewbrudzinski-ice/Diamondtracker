@@ -150,6 +150,38 @@ test('spray data collects only located batted balls and filters by player', () =
   assert.equal(Stats.sprayData({ playerId: 'p1' }).length, 2);
 });
 
+test('runs scored are credited to the player who crossed the plate', () => {
+  seedState({
+    teams: [F.team({ players: [{ id: 'p1', name: 'Lead' }, { id: 'p2', name: 'Slug' }] })],
+    history: [F.game({ events: [
+      F.single({ batterId: 'p1', side: 'away' }), // p1 reaches base
+      // p2 homers, driving in p1 and themselves
+      F.homer({ batterId: 'p2', side: 'away', rbi: 2,
+        scored: [{ id: 'p1', name: 'Lead' }, { id: 'p2', name: 'Slug' }] }),
+    ] })],
+  });
+  assert.equal(Stats.playerBatting('p1').r, 1, 'the runner scores a run');
+  assert.equal(Stats.playerBatting('p2').r, 1, 'the slugger scores on their own HR');
+  assert.equal(Stats.playerBatting('p2').rbi, 2, 'and is credited two RBI');
+});
+
+test('gameBox surfaces per-player runs scored', () => {
+  const g = F.game({
+    away: 'V', home: 'L', awayRuns: 1,
+    events: [
+      F.single({ batterId: 'p1', side: 'away' }),
+      F.homer({ batterId: 'p2', side: 'away', rbi: 1,
+        scored: [{ id: 'p1', name: 'Lead' }] }),
+    ],
+  });
+  seedState({ teams: [F.team({ players: [
+    { id: 'p1', name: 'Lead' }, { id: 'p2', name: 'Slug' },
+  ] })], history: [] });
+  const box = Stats.gameBox(g);
+  const lead = box.sides.away.batters.find((b) => b.id === 'p1');
+  assert.equal(lead.line.r, 1);
+});
+
 test('milestones surface achieved career marks', () => {
   const events = [];
   for (let i = 0; i < 5; i++) events.push(F.homer({ batterId: 'p1', side: 'away' }));

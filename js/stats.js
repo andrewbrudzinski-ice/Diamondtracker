@@ -23,6 +23,11 @@ export const Stats = (()=>{
         if(!seenPitch.has(pid)){ p.games++; seenPitch.add(pid); }
         accumPitch(p,ev);
       }
+      // credit runs scored to whoever crossed the plate on this play.
+      // (Scorer may differ from the batter, e.g. a runner driven in.)
+      if(Array.isArray(ev.scored)){
+        ev.scored.forEach(sc=>{ if(sc && sc.id){ (bat[sc.id]||(bat[sc.id]=blankBat())).r++; } });
+      }
     });
   }
 

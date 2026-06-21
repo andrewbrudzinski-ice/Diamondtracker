@@ -29,8 +29,10 @@ function setView(v){
   if(v!=='teams'){ teamPageId=null; lineupCtx=null; }
   if(v!=='score'){ pendingPlay=null; smartSuggestion=null; }
   if(v!=='tournaments'){ openTournamentId=null; }
+  _animateView = (v !== activeView);  // animate only on a real tab change
   activeView=v; render();
 }
+let _animateView=false;  // one-shot: play a view-enter transition on next render
 
 /* ---- apply an action with undo snapshot ---- */
 function act(name, meta){
@@ -52,7 +54,7 @@ function act(name, meta){
   navigator.vibrate && navigator.vibrate(name==='homer'?[10,40,20]:8);
   // celebrate scoring plays
   if(name==='homer'){ fxHomeRun(); }
-  else if(runsAfter>runsBefore){ fxScorePop(); }
+  else if(runsAfter>runsBefore){ fxScorePop(); fxRuns(runsAfter-runsBefore); }
 }
 
 /* ---- Interactive play builder: arm a play, tap field to set location ---- */
@@ -189,7 +191,7 @@ function onBaseTap(baseIdx, evt){
   Sheet.open(`
     <div class="sheet-head"><h3>Runner on ${baseName}</h3><button class="x" onclick="Sheet.close()">×</button></div>
     <div class="sheet-body">
-      <div style="font-weight:700;font-size:16px;margin:2px 0 14px">${esc(String(who))}</div>
+      <div style="font-weight:700;font-size:16px;margin:2px 0 14px">${esc(Engine.runnerName(who))}</div>
       <div class="choice" style="grid-template-columns:1fr">
         <button onclick="runnerAdvance(${baseIdx},1)">Advance one base${baseIdx===2?' · SCORE':''}</button>
         ${baseIdx<2?`<button onclick="runnerAdvance(${baseIdx},${3-baseIdx})">Send home · SCORE</button>`:''}
@@ -215,7 +217,7 @@ function runnerOverlay(g){
     pucks+=`<div class="runner-puck" data-base="${i}"
       style="left:${x}%;top:${y}%"
       onpointerdown="startRunnerDrag(event,${i})">
-      <span class="puck-label">${esc(Crest.initials(String(who)))}</span>
+      <span class="puck-label">${esc(Crest.initials(Engine.runnerName(who)))}</span>
     </div>`;
   });
   let zones='';
@@ -286,7 +288,7 @@ function promptRunnerOutcome(fromBase, toBase){
   const dest=DRAG_BASE_NAMES[toBase];
   const scoring = toBase===3;
   Sheet.open(`
-    <div class="sheet-head"><h3>${esc(String(who))} → ${dest}</h3><button class="x" onclick="cancelRunnerDrop()">×</button></div>
+    <div class="sheet-head"><h3>${esc(Engine.runnerName(who))} → ${dest}</h3><button class="x" onclick="cancelRunnerDrop()">×</button></div>
     <div class="sheet-body">
       <p style="color:var(--ink-dim);font-size:13px;margin:0 0 14px">How did the play end?</p>
       <div class="outcome-grid">
@@ -311,16 +313,18 @@ function resolveRunner(fromBase, toBase, outcome){
     const dest=DRAG_BASE_NAMES[toBase];
     if(outcome==='out'){
       g.outs++;
-      g.events.push({type:'out',label:`${who} out at ${dest}`,i:g.inning,half:g.half,ts:Date.now()});
+      g.events.push({type:'out',label:`${Engine.runnerName(who)} out at ${dest}`,i:g.inning,half:g.half,ts:Date.now()});
       if(g.outs>=3){ Engine.endHalfPublic(g); }
     } else {
       if(toBase>=3){ addRunUI(g); }
       else { g.bases[toBase]=who; }
       if(outcome==='error') g.totals[g.half==='top'?'home':'away'].e++;
       const tag = outcome==='error'?' (error)' : outcome==='fc'?' (FC)' : '';
-      g.events.push({type:toBase>=3?'run':'adv',
-        label:`${who} ${toBase>=3?'scores':'to '+dest}${tag}`,
-        i:g.inning,half:g.half,ts:Date.now(),rbi:0});
+      const e={type:toBase>=3?'run':'adv',
+        label:`${Engine.runnerName(who)} ${toBase>=3?'scores':'to '+dest}${tag}`,
+        i:g.inning,half:g.half,ts:Date.now(),rbi:0};
+      if(toBase>=3) e.scored=Engine.scoredInfo([who]);  // attribute the run scored
+      g.events.push(e);
     }
   });
   const verb = outcome==='out'?'Out recorded':(toBase>=3?'Run scored':'Runner advanced');
@@ -337,8 +341,10 @@ function runnerAdvance(baseIdx, n){
     const dest=idx+n;
     if(dest>=3){ runs++; addRunUI(g); }
     else g.bases[dest]=who;
-    g.events.push({type:'adv',label:`Runner to ${['1st','2nd','3rd','home'][Math.min(dest,3)]}`,
-      i:g.inning,half:g.half,ts:Date.now(),rbi:0});
+    const e={type:'adv',label:`Runner to ${['1st','2nd','3rd','home'][Math.min(dest,3)]}`,
+      i:g.inning,half:g.half,ts:Date.now(),rbi:0};
+    if(dest>=3) e.scored=Engine.scoredInfo([who]);  // attribute the run scored
+    g.events.push(e);
   });
   toast('Runner advanced');
 }
@@ -348,7 +354,9 @@ function runnerSteal(baseIdx){
     const who=g.bases[baseIdx];
     if(baseIdx===2){ g.bases[2]=null; addRunUI(g); }
     else { g.bases[baseIdx+1]=who; g.bases[baseIdx]=null; }
-    g.events.push({type:'sb',label:'Stolen Base',i:g.inning,half:g.half,ts:Date.now()});
+    const e={type:'sb',label:'Stolen Base',i:g.inning,half:g.half,ts:Date.now()};
+    if(baseIdx===2) e.scored=Engine.scoredInfo([who]);  // steal of home scores
+    g.events.push(e);
   });
   toast('Stolen base');
 }
@@ -400,6 +408,15 @@ function fxHomeRun(){
   document.body.appendChild(host);
   setTimeout(()=>host.remove(),1500);
   fxScorePop();
+}
+// floating "+N RUN" celebration pill for any scoring play
+function fxRuns(n){
+  if(!(n>0)) return;
+  const host=document.createElement('div');
+  host.className='fx-overlay';
+  host.innerHTML=`<div class="fx-run">+${n} RUN${n>1?'S':''}</div>`;
+  document.body.appendChild(host);
+  setTimeout(()=>host.remove(),1100);
 }
 
 function undo(){
@@ -737,29 +754,32 @@ function renderScore(g){
   const ballDots = dots(3,'',g.balls);
   const strikeDots = dots(2,'',g.strikes);
   const outDots = dots(2,'out',g.outs);
+  const aw=g.totals.away.r, hw=g.totals.home.r;
+  const batColor=teamColor(g[bt].name);
 
   return `
   <div class="board">
     <div class="board-row">
-      <div class="team-cell away">
+      <div class="team-cell away ${g.half==='top'?'batting':''}">
         <div class="tc-line">
           <span class="board-crest">${Crest.team(g.away.name, teamColor(g.away.name), 26)}</span>
           <div class="team-name ${g.half==='top'?'batting':''}">${esc(g.away.name)}</div>
         </div>
-        <div class="team-score">${g.totals.away.r}</div>
+        <div class="team-score ${aw>hw?'lead':''}">${aw}</div>
       </div>
       <div class="center-cell">
         <div class="inning"><span class="ord">${g.inning}</span><sup>${ord(g.inning).replace(/\d+/,'')}</sup></div>
         <div class="half"><span class="arrow">${g.half==='top'?'▲':'▼'}</span></div>
       </div>
-      <div class="team-cell home">
+      <div class="team-cell home ${g.half==='bottom'?'batting':''}">
         <div class="tc-line">
           <span class="board-crest">${Crest.team(g.home.name, teamColor(g.home.name), 26)}</span>
           <div class="team-name ${g.half==='bottom'?'batting':''}">${esc(g.home.name)}</div>
         </div>
-        <div class="team-score">${g.totals.home.r}</div>
+        <div class="team-score ${hw>aw?'lead':''}">${hw}</div>
       </div>
     </div>
+    <div class="board-pulse"></div>
   </div>
 
   <div class="fieldwrap ${pendingPlay?'is-armed':''}" id="fieldwrap">
@@ -775,9 +795,11 @@ function renderScore(g){
     <div class="cgrp"><div class="clbl">S</div><div class="cdots">${strikeDots}</div></div>
     <div class="cgrp"><div class="clbl">O</div><div class="cdots">${outDots}</div></div>
     <div class="cbat">
-      <span class="pill">AT BAT</span>
-      <span class="who">${esc(batter.name)}</span>
-      ${batter.num?`<span class="num">#${batter.num}</span>`:''}
+      <span class="avatar cbat-av">${Crest.player(batter.name, batter.num, batColor, false)}</span>
+      <div class="cbat-info">
+        <span class="pill">AT BAT</span>
+        <span class="who">${esc(batter.name)}${batter.num?` <span class="num">#${batter.num}</span>`:''}</span>
+      </div>
     </div>
   </div>
 
@@ -1231,7 +1253,7 @@ function boxScoreHTML(g){
             const sb=Stats.playerBatting(p.id,true);
             return `<div class="bx-row">
               <span class="bx-name">${esc(p.name)}${p.num?` <i>#${p.num}</i>`:''}</span>
-              <span>${b.ab}</span><span>${rbiRunsApprox(g,p.id)}</span><span>${b.h}</span>
+              <span>${b.ab}</span><span>${b.r}</span><span>${b.h}</span>
               <span>${b.rbi}</span><span>${b.bb}</span><span>${b.k}</span><span>${fmt3(Stats.avg(sb))}</span>
             </div>`;}).join('')}
         </div>`;
@@ -1263,10 +1285,6 @@ function boxTotalRow(name,t){
     <span class="bxt-cell"><b>${t.lob}</b><i>LOB</i></span>
   </div>`;
 }
-// runs scored per player isn't individually tracked yet; show RBI-derived dash
-function rbiRunsApprox(g,pid){ return '–'; }
-
-
 /* ============================================================
    TEAMS VIEW
    ============================================================ */
@@ -1833,6 +1851,11 @@ function render(){
     body = renderMore();
   }
   app.innerHTML = body + nav();
+  if(_animateView){
+    // one-shot entrance on tab change (skipped on per-play live re-renders)
+    app.classList.remove('view-enter'); void app.offsetWidth; app.classList.add('view-enter');
+    _animateView=false;
+  }
   if(activeView==='teams' && lineupCtx) initLineupDnD();
 }
 
@@ -1849,8 +1872,12 @@ function renderHome(){
 
   return `
   ${appbar()}
-  <div class="scroll stagger">
+  <div class="scroll" data-refresh="home">
+    ${scoresRail()}
+    <div class="stagger">
     ${heroCard()}
+
+    ${spotlightCard()}
 
     ${(()=>{ const up=Schedule.upcoming().slice(0,2);
       return up.length?`
@@ -1874,28 +1901,71 @@ function renderHome(){
         </div>`).join('')}
     </div>`:''}
 
-    ${results.length?`
-    <div class="sec"><h3>Recent Results</h3><span class="more" onclick="setView('history')">Archive</span></div>
-    <div class="standings">
-      ${results.map(g=>{
-        const aw=g.totals.away.r, hw=g.totals.home.r;
-        const aWin=aw>hw, hWin=hw>aw;
-        const ac=teamColor(g.away.name), hc=teamColor(g.home.name);
-        return `<div class="result-row">
-          <div class="teams">
-            <div class="ln ${aWin?'w':'l'}"><span class="crest-xs">${Crest.team(g.away.name,ac,20)}</span>
-              <span class="tn">${esc(g.away.name)}</span><span class="sc">${aw}</span></div>
-            <div class="ln ${hWin?'w':'l'}"><span class="crest-xs">${Crest.team(g.home.name,hc,20)}</span>
-              <span class="tn">${esc(g.home.name)}</span><span class="sc">${hw}</span></div>
-          </div>
-          <span class="when">${new Date(g.created).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span>
-        </div>`;
-      }).join('')}
-    </div>`:''}
-
     ${!standings.length && !results.length ? firstRunCard() : ''}
     <div style="height:20px"></div>
+    </div>
   </div>`;
+}
+
+/* ESPN-style horizontal scores strip: the live game (if any) + recent
+   finals as compact, swipeable, tappable chips. */
+function scoresRail(){
+  const s=Store.get();
+  const games=[];
+  if(s.game) games.push({g:s.game, live:!s.game.final});
+  Standings.recentResults(8).forEach(g=>{ if(!s.game || g.id!==s.game.id) games.push({g, live:false}); });
+  if(games.length<2) return '';           // nothing worth a strip yet
+  const chip=({g,live})=>{
+    const aw=g.totals.away.r, hw=g.totals.home.r;
+    const ac=teamColor(g.away.name), hc=teamColor(g.home.name);
+    const aWin=!live&&aw>hw, hWin=!live&&hw>aw;
+    const status=live
+      ? `<div class="sc-status live"><span class="live-dot"></span>${g.half==='top'?'TOP':'BOT'} ${ord(g.inning)}</div>`
+      : `<div class="sc-status">${new Date(g.created).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>`;
+    const tap = live ? `setView('score')` : `openBoxScore(findGameById('${g.id}'))`;
+    return `<div class="score-chip" onclick="${tap}">
+      ${status}
+      <div class="sc-line ${aWin?'win':(!live&&hWin?'lose':'')}">
+        <span class="crest-xs">${Crest.team(g.away.name,ac,18)}</span>
+        <span class="nm">${esc(g.away.name)}</span><span class="rn">${aw}</span></div>
+      <div class="sc-line ${hWin?'win':(!live&&aWin?'lose':'')}">
+        <span class="crest-xs">${Crest.team(g.home.name,hc,18)}</span>
+        <span class="nm">${esc(g.home.name)}</span><span class="rn">${hw}</span></div>
+    </div>`;
+  };
+  return `<div class="score-rail">${games.slice(0,8).map(chip).join('')}</div>`;
+}
+
+/* Featured player spotlight — the hottest bat in the league. */
+function spotlightCard(){
+  const rows=Stats.leaders('ops',{minAB:5});
+  let pick=rows[0];
+  if(!pick){ const hr=Stats.leaders('hr',{}); pick=hr[0]; }   // fallback before AB volume
+  if(!pick) return '';
+  const r=Stats.resolve(pick.id); if(!r) return '';
+  const b=pick.b;
+  const color=r.team.color;
+  const fmt3=v=>(v>=1?v.toFixed(3):('.'+Math.round(v*1000).toString().padStart(3,'0')));
+  const stat=(v,l)=>`<div class="sl-stat"><b>${v}</b><small>${l}</small></div>`;
+  return `<div class="sec"><h3>Player Spotlight</h3></div>
+    <div class="spotlight" onclick="openPlayerCard('${r.team.id}','${pick.id}')">
+      <div class="sl-bg" style="background:linear-gradient(135deg,${color},${Crest.shade(color,-.55)})"></div>
+      <div class="field-lines"></div>
+      <div class="sl-inner">
+        <span class="avatar sl-av">${Crest.player(r.player.name,r.player.num,color,true)}</span>
+        <div class="sl-meta">
+          <div class="sl-tag">🔥 In Form</div>
+          <div class="sl-name">${esc(r.player.name)}</div>
+          <div class="sl-team">${esc(r.team.name)}${r.player.num?` · #${r.player.num}`:''}</div>
+        </div>
+      </div>
+      <div class="sl-stats">
+        ${stat(fmt3(Stats.avg(b)),'AVG')}
+        ${stat(b.hr,'HR')}
+        ${stat(b.rbi,'RBI')}
+        ${stat(fmt3(Stats.ops(b)),'OPS')}
+      </div>
+    </div>`;
 }
 
 function appbar(){
@@ -2012,7 +2082,7 @@ function computeLeaders(){
 }
 function leaderCard(l){
   if(l.type==='player'){
-    return `<div class="leader-card" onclick="openPlayerCard('${l.teamId}','${l.pid}')">
+    return `<div class="leader-card" style="--lc:${l.color}" onclick="openPlayerCard('${l.teamId}','${l.pid}')">
       <div class="cat">${l.cat}</div>
       <div class="who">
         <span class="avatar">${Crest.player(l.name,l.num,l.color,false)}</span>
@@ -2021,7 +2091,7 @@ function leaderCard(l){
       <div class="stat">${l.stat}${l.unit?`<small>${l.unit}</small>`:''}</div>
     </div>`;
   }
-  return `<div class="leader-card" onclick="openTeamPageByName('${escAttr(l.name)}')">
+  return `<div class="leader-card" style="--lc:${l.color}" onclick="openTeamPageByName('${escAttr(l.name)}')">
     <div class="cat">${l.cat}</div>
     <div class="who">
       <span class="avatar">${Crest.team(l.name,l.color,38)}</span>
@@ -2504,16 +2574,20 @@ function renderMore(){
 }
 
 function nav(){
-  const tab=(v,ic,lbl)=>`<button class="${activeView===v?'active':''}" onclick="setView('${v}')">
-    <span class="ic">${ic}</span>${lbl}</button>`;
   const live = !!Store.get().game;
-  return `<div class="nav">
-    ${tab('score', live?'⚾':'🏠', live?'LIVE':'HOME')}
-    ${tab('book','📖','BOOK')}
-    ${tab('teams','👥','TEAMS')}
-    ${tab('stats','📊','STATS')}
-    ${tab('more','⚙️','MORE')}
-  </div>`;
+  const tabs=[
+    ['score', live?'⚾':'🏠', live?'LIVE':'HOME'],
+    ['book','📖','BOOK'],
+    ['teams','👥','TEAMS'],
+    ['stats','📊','STATS'],
+    ['more','⚙️','MORE'],
+  ];
+  const idx=tabs.findIndex(t=>t[0]===activeView);
+  // single sliding indicator (hidden when on a view with no matching tab)
+  const ind = idx>=0 ? `<div class="nav-ind" style="left:${idx*(100/tabs.length)}%;width:${100/tabs.length}%"></div>` : '';
+  const btn=([v,ic,lbl])=>`<button class="${activeView===v?'active':''}" onclick="setView('${v}')">
+    <span class="ic">${ic}</span>${lbl}</button>`;
+  return `<div class="nav">${ind}${tabs.map(btn).join('')}</div>`;
 }
 
 /* ---- settings actions ---- */
@@ -2551,7 +2625,7 @@ Object.assign(window, {
   teamSelectOptions, openSetup, onRulePreset, ruleSummaryText, onTeamPick, applyLineup, startGame, openRulesInfo, resolveRoster, pickPitcher,
   parseRoster, diamondSVG, renderScore, renderBook, abRow, hasMovement, lineScore, statsMode, statsSeasonId, BAT_CATS,
   PITCH_CATS, fmtStatVal, renderStats, setStatsMode, setStatsSeason, renderAwards, leaderboardCard, openLeaderList, openSeasonManager, createSeason,
-  activateSeason, renderHistory, reviewGame, reviewGameObj, renderBookStatic, openBoxScore, boxScoreHTML, boxTotalRow, rbiRunsApprox, openTeamId,
+  activateSeason, renderHistory, reviewGame, reviewGameObj, renderBookStatic, openBoxScore, boxScoreHTML, boxTotalRow, openTeamId,
   lineupCtx, teamPageId, renderTeams, teamRowCard, posRank, openTeamPage, openTeamPageByName, closeTeamPage, renderTeamPage, playerCard,
   posName, openPlayerCard, statCell, rateCell, TEAM_COLORS, openTeamSheet, logoPreviewHTML, onLogoPick, clearLogo, pickColor,
   saveTeam, deleteTeam, openPlayerSheet, pickHand, savePlayer, deletePlayer, openLineupPicker, newLineup, editLineup, deleteLineup,
@@ -2563,10 +2637,58 @@ Object.assign(window, {
   rsvp, renderMore, nav, toggleTheme, exportData, wipe, esc,
 });
 
+/* ---- Pull-to-refresh (touch only) ----
+   Engages only when the touched .scroll is at the top and the user drags
+   down; otherwise native scrolling is untouched. "Refresh" just re-renders
+   (data is local), but the gesture makes the app feel native. */
+function initPullToRefresh(){
+  const THRESH=64, MAX=90;
+  let el=null, startY=0, pull=0, armed=false;
+  const ptr=document.getElementById('ptr');
+  const reset=()=>{
+    if(el){ el.style.transition='transform .25s var(--ease-out)'; el.style.transform='';
+      const e=el; setTimeout(()=>{ if(e) e.style.transition=''; },260); }
+    if(ptr){ ptr.classList.add('snap'); ptr.classList.remove('show','spin'); ptr.style.transform=''; }
+    el=null; pull=0; armed=false;
+  };
+  document.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1){ armed=false; return; }
+    const sc=e.target.closest && e.target.closest('.scroll');
+    if(sc && sc.scrollTop<=0){ el=sc; startY=e.touches[0].clientY; armed=true; pull=0;
+      if(ptr) ptr.classList.remove('snap'); }
+    else armed=false;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!armed||!el) return;
+    const dy=e.touches[0].clientY-startY;
+    if(dy<=0 || el.scrollTop>0){ if(pull>0){ el.style.transform=''; if(ptr) ptr.classList.remove('show'); } pull=0; return; }
+    pull=Math.min(dy*0.5, MAX);
+    e.preventDefault();                                   // suppress native overscroll while pulling
+    el.style.transition=''; el.style.transform=`translateY(${pull}px)`;
+    if(ptr){ ptr.classList.add('show'); ptr.style.transform=`translate(-50%,${pull-22}px)`;
+      ptr.style.opacity=Math.min(1, pull/THRESH); }
+  },{passive:false});
+  const end=()=>{
+    if(!armed||!el){ return; }
+    if(pull>=THRESH){
+      if(ptr){ ptr.classList.add('spin'); ptr.style.transform='translate(-50%,18px)'; ptr.style.opacity=1; }
+      if(el){ el.style.transition='transform .2s var(--ease-out)'; el.style.transform='translateY(40px)'; }
+      navigator.vibrate && navigator.vibrate(10);
+      setTimeout(()=>{ render(); reset(); }, 480);        // render() rebuilds the scroll element
+    } else { reset(); }
+  };
+  document.addEventListener('touchend',end,{passive:true});
+  document.addEventListener('touchcancel',reset,{passive:true});
+}
+
 /* ---- boot ---- */
 (function init(){
   try{ const t=localStorage.getItem('dt.theme'); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
   Store.load();
   Store.sub(()=>render());
   render();
+  initPullToRefresh();
+  // dismiss the branded boot splash once the first paint is up
+  const sp=document.getElementById('splash');
+  if(sp) setTimeout(()=>{ sp.classList.add('hide'); setTimeout(()=>sp.remove(),460); }, 540);
 })();
