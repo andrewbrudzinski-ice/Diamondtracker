@@ -291,6 +291,35 @@ test('runnerName and runnerKey read both object and legacy-string occupants', ()
   assert.equal(Engine.runnerKey('LegacyName'), 'LegacyName');
 });
 
+// ---- pitch counts ----------------------------------------------
+test('a plate appearance records its pitch count (balls + strikes + ball in play)', () => {
+  const g = makeGame();
+  Engine.actions.ball(g); Engine.actions.ball(g); Engine.actions.strike(g);
+  Engine.actions.single(g);
+  assert.equal(last(g).pitches, 4);   // 2 balls + 1 strike + 1 contact pitch
+});
+
+test('a full-count walk is 4 pitches; a three-pitch strikeout is 3', () => {
+  const w = makeGame();
+  Engine.actions.ball(w); Engine.actions.ball(w); Engine.actions.ball(w); Engine.actions.ball(w);
+  assert.equal(last(w).type, 'walk');
+  assert.equal(last(w).pitches, 4);
+  const k = makeGame();
+  Engine.actions.strike(k); Engine.actions.strike(k); Engine.actions.strike(k);
+  assert.equal(last(k).type, 'k');
+  assert.equal(last(k).pitches, 3);
+});
+
+test('a first-pitch homer is one pitch; baserunning events are zero', () => {
+  const g = makeGame();
+  Engine.actions.homer(g);
+  assert.equal(last(g).pitches, 1);
+  const g2 = makeGame();
+  g2.bases = [null, R('R2', 'r2'), null];
+  Engine.actions.stolenBase(g2);
+  assert.equal(last(g2).pitches, 0);   // not a pitch
+});
+
 test('RULE_PRESETS expose the documented presets', () => {
   assert.ok(Engine.RULE_PRESETS.standard);
   assert.ok(Engine.RULE_PRESETS.slowpitch);

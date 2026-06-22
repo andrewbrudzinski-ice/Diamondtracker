@@ -41,6 +41,20 @@ test('Engine-scored game produces a box score with per-player runs', () => {
   assert.equal(totalR, g.totals.away.r);
 });
 
+test('pitch counts accumulate to the fielding pitcher in the box score', () => {
+  const roster = [{ id: 'a1', name: 'Andy' }, { id: 'a2', name: 'Beth' }];
+  seedState({ teams: [F.team({ id: 't1', name: 'Aces', players: roster })], history: [] });
+  const g = Engine.newGame({ away: 'Aces', home: 'Foes', awayRoster: roster, homeRoster: [],
+    homePitcherId: 'foe-p' });
+  Store.get().game = g;
+  // PA 1: ball, strike, single -> 3 pitches; PA 2: strike x3 -> 3 pitches
+  Engine.actions.ball(g); Engine.actions.strike(g); Engine.actions.single(g);
+  Engine.actions.strike(g); Engine.actions.strike(g); Engine.actions.strike(g);
+  const box = Stats.gameBox(g);
+  const pitcher = box.sides.home.pitchers.find((p) => p.id === 'foe-p');
+  assert.equal(pitcher.line.pitches, 6, '3 + 3 pitches');
+});
+
 test('runs survive a persist + reload round-trip through the Store', () => {
   const roster = [{ id: 'a1', name: 'Andy' }, { id: 'a2', name: 'Beth' }];
   seedState({ teams: [F.team({ id: 't1', name: 'Aces', players: roster })], history: [] });

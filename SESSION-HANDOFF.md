@@ -272,8 +272,11 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   Awards view per season (`enhanceSeasonStory`, cached as `season.story`/`storyAI`).
 - ~~situational (RISP) splits~~ **DONE** — `Stats.rispBatting()` (derived from each play's
   `basesBefore`); "With RISP" line on the player card.
-- Smaller: pitch counts (needs an engine change — only taken pitches emit events today). Push
-  notifications (needs a server/service-worker).
+- ~~pitch counts~~ **DONE** — `pushEvent` stamps `ev.pitches` (balls+strikes+1 for a ball in
+  play; manual walk/K shortcuts can undercount); `Stats` sums `pitches`; shown as **P** in the
+  box-score pitching table + player-card pitching line.
+- Push notifications (needs a server/service-worker) — the one remaining idea outside the
+  no-backend model.
 - ~~Phase C self-service RSVPs~~ **DONE** — `js/rsvp.js` + `supabase/rsvp.sql`: player-writable
   `diamondtracker_claims` (account↔player) and `diamondtracker_rsvps` tables (RLS `auth.uid()=
   user_id`). UI: "Claim your player" in Account; "Your RSVP" In/Maybe/Out on each event (works

@@ -1461,12 +1461,12 @@ function boxScoreHTML(g){
       html+=`<div class="box-sec">${esc(name)} · Pitching</div>
         <div class="box-table">
           <div class="bx-row bx-head pitch"><span class="bx-name">Pitcher</span>
-            <span>IP</span><span>H</span><span>R</span><span>BB</span><span>SO</span><span>ERA</span></div>
+            <span>IP</span><span>P</span><span>H</span><span>R</span><span>BB</span><span>SO</span><span>ERA</span></div>
           ${s.pitchers.map(p=>{const pl=p.line;
             const sp=Stats.playerPitching(p.id,true);
             return `<div class="bx-row pitch">
               <span class="bx-name">${esc(p.name)}${p.num?` <i>#${p.num}</i>`:''}</span>
-              <span>${Stats.ipStr(pl)}</span><span>${pl.h}</span><span>${pl.r}</span>
+              <span>${Stats.ipStr(pl)}</span><span>${pl.pitches||0}</span><span>${pl.h}</span><span>${pl.r}</span>
               <span>${pl.bb}</span><span>${pl.k}</span><span>${Stats.era(sp).toFixed(2)}</span>
             </div>`;}).join('')}
         </div>`;
@@ -1677,8 +1677,8 @@ function openPlayerCard(teamId,pid){
   const pc=Stats.careerPitching(pid);
   const pitchTable = pc.bf>0 ? `
     <div class="sec" style="padding:18px 18px 6px"><h3>Pitching · Career</h3></div>
-    <div class="statline" style="grid-template-columns:repeat(4,1fr)">
-      ${statCell('IP',Stats.ipStr(pc))}${statCell('BF',pc.bf)}${statCell('H',pc.h)}${statCell('K',pc.k)}
+    <div class="statline" style="grid-template-columns:repeat(5,1fr)">
+      ${statCell('IP',Stats.ipStr(pc))}${statCell('BF',pc.bf)}${statCell('P',pc.pitches||0)}${statCell('H',pc.h)}${statCell('K',pc.k)}
     </div>
     <div class="ratebar">
       ${rateCell('ERA',Stats.era(pc).toFixed(2))}${rateCell('WHIP',Stats.whip(pc).toFixed(2))}

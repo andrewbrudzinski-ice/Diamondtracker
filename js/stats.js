@@ -4,7 +4,7 @@ export const Stats = (()=>{
   function blankBat(){
     return {pa:0,ab:0,h:0,b1:0,b2:0,b3:0,hr:0,bb:0,k:0,rbi:0,r:0,sb:0,sf:0,tb:0,games:0};
   }
-  function blankPitch(){ return {outs:0,h:0,bb:0,k:0,r:0,bf:0,games:0}; }
+  function blankPitch(){ return {outs:0,h:0,bb:0,k:0,r:0,bf:0,pitches:0,games:0}; }
   function blankField(){ return {po:0,a:0,e:0,games:0}; }
 
   // tally one game's events into maps keyed by playerId
@@ -99,6 +99,7 @@ export const Stats = (()=>{
     // pitcher faces the batter on PA-producing events
     if(['hit','walk','k','out','dp','fc','sac','error'].includes(ev.type)){
       p.bf++;
+      p.pitches += ev.pitches||0;
       if(ev.type==='hit')p.h++;
       if(ev.type==='walk')p.bb++;
       if(ev.type==='k')p.k++;

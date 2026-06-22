@@ -86,7 +86,7 @@ export const Engine = (()=> {
   function pushEvent(g, ev){
     const t = battingTeam(g);
     const b = currentBatter(g);
-    g.events.push(Object.assign({
+    const e = Object.assign({
       i:g.inning, half:g.half, ts:Date.now(),
       batter:b.name, batterId:b.id||null,
       teamId:g[t].teamId||null, side:t,
@@ -97,7 +97,13 @@ export const Engine = (()=> {
       basesAfter:g.bases.slice(),
       outsAfter:g.outs,
       scoreAfter:{away:g.totals.away.r, home:g.totals.home.r}
-    }, ev));
+    }, ev);
+    // pitches this PA = balls + strikes (+1 for the pitch put in play). Manual
+    // walk/K shortcut buttons leave the count at 0, so this can undercount when
+    // the ball/strike buttons weren't used — best-effort, like ERA/LOB.
+    const CONTACT_BONUS = {hit:1,out:1,sac:1,fc:1,dp:1,error:1,walk:0,k:0};
+    e.pitches = (e.type in CONTACT_BONUS) ? (g.balls + g.strikes + CONTACT_BONUS[e.type]) : 0;
+    g.events.push(e);
   }
 
   function clearCount(g){ g.balls=0; g.strikes=0; }

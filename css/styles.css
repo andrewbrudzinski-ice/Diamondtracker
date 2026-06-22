@@ -677,7 +677,7 @@ input.in,select.in{width:100%;margin-top:6px;background:var(--bg);border:1px sol
 .bx-row{display:grid;grid-template-columns:1.8fr repeat(7,1fr);align-items:center;
   padding:9px 12px;border-top:1px solid var(--line);font-family:var(--font-num);
   font-size:13px;font-weight:700;text-align:center}
-.bx-row.pitch{grid-template-columns:1.8fr repeat(6,1fr)}
+.bx-row.pitch{grid-template-columns:1.6fr repeat(7,1fr)}
 .bx-row.field{grid-template-columns:1.8fr repeat(3,1fr)}
 .bx-row .bx-err{color:var(--out)}
 .bx-row:first-child{border-top:none}
