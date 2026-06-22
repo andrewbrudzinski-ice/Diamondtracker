@@ -12,6 +12,7 @@ import { Sync } from './sync.js';
 import { AI } from './ai.js';
 import { Auth } from './auth.js';
 import { RSVP } from './rsvp.js';
+import { Push } from './push.js';
 import { ShareCard } from './sharecard.js';
 
 const ord = n => n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th');
@@ -467,6 +468,7 @@ function confirmFinish(){
   const g=s.game;
   s.history.unshift(g); s.game=null;
   Store.commit(); Sheet.close();
+  pushNotify('Final', `${g.away.name} ${g.totals.away.r}–${g.totals.home.r} ${g.home.name}`);
   // offer MVP selection (only meaningful if players are attributed)
   const hasPlayers = g.events.some(e=>e.batterId);
   if(hasPlayers){ openMvpPicker(g.id); }
@@ -836,8 +838,10 @@ function startGame(){
     seasonId:Store.get().currentSeasonId||null,
     rules:(Engine.RULE_PRESETS[(document.getElementById('rulePreset')||{}).value]||{}).rules||null,
   };
-  Store.get().game = Engine.newGame(cfg);
+  const g = Engine.newGame(cfg);
+  Store.get().game = g;
   Store.commit(); Sheet.close(); setView('score');
+  pushNotify('⚾ Game starting', `${g.away.name} vs ${g.home.name}`);
 }
 // show the active ruleset for the live game
 function openRulesInfo(){
@@ -2831,6 +2835,8 @@ function renderMore(){
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="openAiSheet()">✨ AI Write-ups<span class="sync-pill ${AI.isConfigured()?'live':''}">${AI.isConfigured()?'ON':'OFF'}</span></button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
+      onclick="openPushSheet()">🔔 Notifications<span class="sync-pill ${(Push.readConfig()||{}).enabled?'live':''}">${(Push.readConfig()||{}).enabled?'ON':'OFF'}</span></button>
+    <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="toggleTheme()">${theme==='light'?'🌙 Switch to Dark':'☀️ Switch to Light'}</button>
     <button class="tool" style="width:100%;justify-content:flex-start;padding:0 16px;margin-bottom:10px;min-height:52px;border-radius:14px"
       onclick="exportData()">⬇️ Export All Data (JSON)</button>
@@ -2870,12 +2876,14 @@ async function initSync(opts={}){
     Store.setRemote(Sync.makeRemote(client, cfg.room));
     await Store.hydrate();           // pull shared state, then live updates flow via subscribe
     await Auth.init(client);         // accounts/roles ride the same Supabase project
-    RSVP.init(client, ()=>{ const u=Auth.current().user; return u?u.id:null; });
+    const uid=()=>{ const u=Auth.current().user; return u?u.id:null; };
+    RSVP.init(client, uid);
+    Push.init(client, uid);
     _syncState='live';
     if(opts.toast) toast('Live Sync connected');
   }catch(e){
     console.warn('Live Sync failed; staying offline',e);
-    Store.setRemote(null); Auth.detach(); RSVP.detach(); _syncState='error';
+    Store.setRemote(null); Auth.detach(); RSVP.detach(); Push.detach(); _syncState='error';
     if(opts.toast) toast('Sync failed — working offline');
   }
   render();
@@ -2916,7 +2924,7 @@ function saveSync(){
 function disconnectSync(){
   const cfg=Sync.readConfig()||{};
   Sync.writeConfig({...cfg, enabled:false});   // keep creds for convenience, just disable
-  Store.setRemote(null); Auth.detach(); RSVP.detach(); _syncState='offline';
+  Store.setRemote(null); Auth.detach(); RSVP.detach(); Push.detach(); _syncState='offline';
   Sheet.close(); toast('Disconnected — working offline'); render();
 }
 
@@ -3145,6 +3153,45 @@ function disableAi(){
   Sheet.close(); toast('AI write-ups off'); render();
 }
 
+/* ---- Push notifications (Phase C, opt-in) ---- */
+function openPushSheet(){
+  const cfg=Push.readConfig()||{};
+  const ok=Push.supported();
+  Sheet.open(`
+    <div class="sheet-head"><h3>🔔 Notifications</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">
+      <div class="sync-status ${cfg.enabled?'live':''}"><span class="dot"></span>${cfg.enabled?'On — this device is subscribed':'Off'}</div>
+      ${!ok?`<div class="rsvp-note" style="padding:12px 4px">This browser doesn't support push notifications.</div>`:''}
+      ${!Sync.isConfigured()?`<div class="rsvp-note" style="padding:12px 4px">Set up <b>📡 Live Sync</b> first — notifications use the same Supabase project.</div>`:''}
+      <p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:12px 0">
+        Get a push when a game goes live. Requires a deployed <b>notify</b> function and a VAPID
+        public key — one-time setup in <b>docs/PUSH.md</b>.</p>
+      <label class="fld"><span>VAPID PUBLIC KEY</span>
+        <input class="in" id="pushKey" placeholder="B…" value="${cfg.vapidPublicKey?esc(cfg.vapidPublicKey):''}"></label>
+      <button class="cta" onclick="savePush()">${cfg.enabled?'Re-subscribe':'Enable notifications'}</button>
+      ${cfg.enabled?`<button class="cta ghost" style="margin-top:10px" onclick="disablePush()">Turn off</button>`:''}
+    </div>`);
+}
+function savePush(){
+  const key=(document.getElementById('pushKey').value||'').trim();
+  const sync=Sync.readConfig()||{};
+  if(!key){ toast('Paste the VAPID public key'); return; }
+  if(!sync.url){ toast('Set up Live Sync first'); return; }
+  Push.writeConfig({ enabled:true, vapidPublicKey:key,
+    functionUrl:sync.url.replace(/\/+$/,'')+'/functions/v1/notify',
+    anonKey:sync.anonKey, room:sync.room });
+  Sheet.close();
+  Push.enable().then(()=>{ toast('Notifications on'); render(); })
+              .catch(e=>{ console.warn(e); toast(e.message||'Could not enable'); render(); });
+}
+function disablePush(){ Push.disable().then(()=>{ Sheet.close(); toast('Notifications off'); render(); }); }
+// fire-and-forget room push (no-op unless configured)
+function pushNotify(title, body){
+  if(!Push.isConfigured()) return;
+  const sc=Sync.readConfig()||{};
+  Push.notify({ title, body, room:sc.room, url:fanLink()||'./' });
+}
+
 /* ---- settings actions ---- */
 function toggleTheme(){
   const cur=document.documentElement.getAttribute('data-theme')||'dark';
@@ -3197,6 +3244,7 @@ Object.assign(window, {
   Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
   openRoleManager, renderRoleList, changeRole,
   RSVP, openClaimPlayer, claimMyPlayer, unclaimPlayer, fillSelfRsvp, toggleMyRsvp,
+  Push, openPushSheet, savePush, disablePush, pushNotify,
   ShareCard, shareGameCard, svgToPng,
   fanLink, copyFanLink, bootFan, renderFan, dotRow,
 });
