@@ -266,8 +266,9 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
 ### Still open / nice-to-have
 - ~~player game logs~~ **DONE** — `Stats.gameLog(playerId,{seasonId,includeLive,limit})` powers a
   tappable **Game Log** section on the player card (date · opp · result · AB/H/HR/RBI).
-- **AI season story** (aggregate a season → narrative); **share card** (export box score as an
-  image); pitch counts; situational (RISP) splits.
+- ~~share card~~ **DONE** — `js/sharecard.js` builds a 1080² result SVG; `shareGameCard()` in
+  app.js rasterizes it (canvas) → Web Share API or download. "📸 Share result" on the box score.
+- **AI season story** (aggregate a season → narrative); pitch counts; situational (RISP) splits.
 - ~~Phase C self-service RSVPs~~ **DONE** — `js/rsvp.js` + `supabase/rsvp.sql`: player-writable
   `diamondtracker_claims` (account↔player) and `diamondtracker_rsvps` tables (RLS `auth.uid()=
   user_id`). UI: "Claim your player" in Account; "Your RSVP" In/Maybe/Out on each event (works

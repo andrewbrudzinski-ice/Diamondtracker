@@ -3,12 +3,13 @@
    installed app launches with no network. Cross-origin requests (Supabase,
    the esm.sh CDN, Google Fonts) are left to the network. Bump CACHE to ship
    a new shell. */
-const CACHE = 'diamondtracker-v1';
+const CACHE = 'diamondtracker-v2';
 const ASSETS = [
   './', './index.html', './css/styles.css', './manifest.json', './icon.svg',
   './js/app.js', './js/storage.js', './js/engine.js', './js/teams.js', './js/crest.js',
   './js/field.js', './js/standings.js', './js/stats.js', './js/awards.js', './js/schedule.js',
-  './js/tournament.js', './js/sync.js', './js/ai.js', './js/auth.js',
+  './js/tournament.js', './js/sync.js', './js/ai.js', './js/auth.js', './js/rsvp.js',
+  './js/sharecard.js',
 ];
 
 self.addEventListener('install', (e) => {

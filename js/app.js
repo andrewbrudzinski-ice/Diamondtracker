@@ -12,6 +12,7 @@ import { Sync } from './sync.js';
 import { AI } from './ai.js';
 import { Auth } from './auth.js';
 import { RSVP } from './rsvp.js';
+import { ShareCard } from './sharecard.js';
 
 const ord = n => n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th');
 const toast = (()=>{ let t; return msg=>{
@@ -685,6 +686,51 @@ function mvpCardHTML(g){
   </div>`;
 }
 
+/* ---- Share card: rasterize the result graphic, then Web Share or download ---- */
+async function shareGameCard(gameId){
+  const g=findGameById(gameId); if(!g) return;
+  toast('Building image…');
+  try{
+    const r=g.mvpId?Stats.resolve(g.mvpId):null;
+    const svg=ShareCard.build({
+      away:g.away.name, home:g.home.name,
+      awayRuns:g.totals.away.r, homeRuns:g.totals.home.r,
+      final:!!g.final,
+      date:new Date(g.created).toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}),
+      mvp:r?r.player.name:'',
+      awayColor:teamColor(g.away.name), homeColor:teamColor(g.home.name),
+    });
+    const blob=await svgToPng(svg,1080,1080);
+    const file=new File([blob],'diamondtracker-result.png',{type:'image/png'});
+    const text=`${g.away.name} ${g.totals.away.r}–${g.totals.home.r} ${g.home.name}`;
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'DiamondTracker', text});
+    } else {
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='diamondtracker-result.png'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1500); toast('Image saved');
+    }
+  }catch(e){ console.warn('share failed',e); toast('Could not create image'); }
+}
+function svgToPng(svg,w,h){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.fillStyle='#0a0d14'; ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(b=> b?resolve(b):reject(new Error('toBlob failed')), 'image/png');
+      }catch(e){ reject(e); }
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('svg load failed')); };
+    img.src=url;
+  });
+}
+
 /* ---- new game setup ---- */
 function teamSelectOptions(selected){
   const teams=Store.get().teams;
@@ -1344,7 +1390,8 @@ function boxScoreHTML(g){
       ${boxTotalRow(g.away.name, box.totals.away)}
       ${boxTotalRow(g.home.name, box.totals.home)}
     </div>
-    ${recapBlock(g)}`;
+    ${recapBlock(g)}
+    <button class="cta ghost" style="margin:10px 14px 2px" onclick="shareGameCard('${g.id}')">📸 Share result</button>`;
 
   // for each side: batting then pitching
   [['away',g.away.name],['home',g.home.name]].forEach(([side,name])=>{
@@ -3101,6 +3148,7 @@ Object.assign(window, {
   Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
   openRoleManager, renderRoleList, changeRole,
   RSVP, openClaimPlayer, claimMyPlayer, unclaimPlayer, fillSelfRsvp, toggleMyRsvp,
+  ShareCard, shareGameCard, svgToPng,
   fanLink, copyFanLink, bootFan, renderFan, dotRow,
 });
 
