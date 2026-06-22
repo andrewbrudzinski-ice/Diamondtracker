@@ -97,6 +97,25 @@ export const AI = (()=> {
   }
   async function gameRecap(ctx, fetchImpl){ return complete(recapPrompt(ctx), fetchImpl); }
 
+  function seasonPrompt(ctx){
+    const lines=[`Season: ${ctx.season}`];
+    if(ctx.games!=null) lines.push(`Games played: ${ctx.games}`);
+    if(ctx.leader) lines.push(`Top of the standings: ${ctx.leader}`);
+    if(ctx.champion) lines.push(`Champion: ${ctx.champion}`);
+    if(ctx.awards && ctx.awards.length)
+      lines.push('Awards — ' + ctx.awards.map(a=>`${a.title}: ${a.name}`).join('; '));
+    if(ctx.notes) lines.push(ctx.notes);
+    return {
+      system: SYSTEM,
+      prompt: `Write a 4-6 sentence season recap that tells the story of the season.\n` +
+        lines.join('\n') + `\n` +
+        `Lead with the headline of the season, weave in the standout team and players, and ` +
+        `close with a forward-looking line. Warm and celebratory, but grounded in these facts.`,
+      maxTokens: 700,
+    };
+  }
+  async function seasonStory(ctx, fetchImpl){ return complete(seasonPrompt(ctx), fetchImpl); }
+
   return { CFG_KEY, MODEL, readConfig, writeConfig, clearConfig, isConfigured,
-           complete, mvpPrompt, mvpSummary, recapPrompt, gameRecap };
+           complete, mvpPrompt, mvpSummary, recapPrompt, gameRecap, seasonPrompt, seasonStory };
 })();

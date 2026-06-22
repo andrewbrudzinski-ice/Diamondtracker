@@ -4,7 +4,7 @@ export const Stats = (()=>{
   function blankBat(){
     return {pa:0,ab:0,h:0,b1:0,b2:0,b3:0,hr:0,bb:0,k:0,rbi:0,r:0,sb:0,sf:0,tb:0,games:0};
   }
-  function blankPitch(){ return {outs:0,h:0,bb:0,k:0,r:0,bf:0,games:0}; }
+  function blankPitch(){ return {outs:0,h:0,bb:0,k:0,r:0,bf:0,pitches:0,games:0}; }
   function blankField(){ return {po:0,a:0,e:0,games:0}; }
 
   // tally one game's events into maps keyed by playerId
@@ -99,6 +99,7 @@ export const Stats = (()=>{
     // pitcher faces the batter on PA-producing events
     if(['hit','walk','k','out','dp','fc','sac','error'].includes(ev.type)){
       p.bf++;
+      p.pitches += ev.pitches||0;
       if(ev.type==='hit')p.h++;
       if(ev.type==='walk')p.bb++;
       if(ev.type==='k')p.k++;
@@ -245,6 +246,23 @@ export const Stats = (()=>{
   function careerBatting(playerId){ return playerBatting(playerId, true, null); }
   function careerPitching(playerId){ return playerPitching(playerId, true, null); }
 
+  // Batting with Runners In Scoring Position — derived from each play's
+  // basesBefore snapshot (a runner on 2nd or 3rd when the PA started).
+  function rispBatting(playerId, opts={}){
+    const {seasonId=null, includeLive=true}=opts;
+    const s=Store.get();
+    let games=[...s.history];
+    if(includeLive && s.game) games.push(s.game);
+    if(seasonId) games=games.filter(g=>g.seasonId===seasonId);
+    const b=blankBat();
+    games.forEach(g=>g.events.forEach(ev=>{
+      if(ev.batterId!==playerId) return;
+      const bb=ev.basesBefore; if(!bb) return;          // need the snapshot
+      if(bb[1]!=null || bb[2]!=null) accumBat(b, ev);   // runner on 2B or 3B
+    }));
+    return b;
+  }
+
   // Per-game log for a player, newest first: each game they batted or pitched
   // in, with opponent + result. opts: {seasonId, includeLive, limit}.
   function gameLog(playerId, opts={}){
@@ -374,7 +392,7 @@ export const Stats = (()=>{
   return { blankBat, blankPitch, blankField, avg, obp, slg, ops, era, whip, ipStr,
            league, playerBatting, playerPitching, leaders, pitchLeaders, leaderTable, resolve,
            sprayData, sprayCount, fieldLeaders,
-           seasonBreakdown, careerBatting, careerPitching, milestones, gameBox, gameLog };
+           seasonBreakdown, careerBatting, careerPitching, rispBatting, milestones, gameBox, gameLog };
 })();
 
 /* ============================================================

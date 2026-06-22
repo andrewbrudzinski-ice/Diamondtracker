@@ -268,7 +268,15 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   tappable **Game Log** section on the player card (date · opp · result · AB/H/HR/RBI).
 - ~~share card~~ **DONE** — `js/sharecard.js` builds a 1080² result SVG; `shareGameCard()` in
   app.js rasterizes it (canvas) → Web Share API or download. "📸 Share result" on the box score.
-- **AI season story** (aggregate a season → narrative); pitch counts; situational (RISP) splits.
+- ~~AI season story~~ **DONE** — `AI.seasonPrompt`/`seasonStory`; "✨ Write season story" on the
+  Awards view per season (`enhanceSeasonStory`, cached as `season.story`/`storyAI`).
+- ~~situational (RISP) splits~~ **DONE** — `Stats.rispBatting()` (derived from each play's
+  `basesBefore`); "With RISP" line on the player card.
+- ~~pitch counts~~ **DONE** — `pushEvent` stamps `ev.pitches` (balls+strikes+1 for a ball in
+  play; manual walk/K shortcuts can undercount); `Stats` sums `pitches`; shown as **P** in the
+  box-score pitching table + player-card pitching line.
+- Push notifications (needs a server/service-worker) — the one remaining idea outside the
+  no-backend model.
 - ~~Phase C self-service RSVPs~~ **DONE** — `js/rsvp.js` + `supabase/rsvp.sql`: player-writable
   `diamondtracker_claims` (account↔player) and `diamondtracker_rsvps` tables (RLS `auth.uid()=
   user_id`). UI: "Claim your player" in Account; "Your RSVP" In/Maybe/Out on each event (works
