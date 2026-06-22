@@ -217,6 +217,28 @@ test('gameLog respects the limit', () => {
   assert.equal(Stats.gameLog('p1', { limit: 2 }).length, 2);
 });
 
+test('rispBatting counts only plate appearances with a runner on 2nd/3rd', () => {
+  seedState({
+    teams: [F.team({ players: [{ id: 'p1', name: 'Pat' }] })],
+    history: [F.game({ events: [
+      // RISP: runner on 2nd before the play -> hit counts
+      F.single({ batterId: 'p1', side: 'away', basesBefore: [null, { name: 'R', id: 'r' }, null] }),
+      // RISP: runner on 3rd -> out counts (AB, no hit)
+      F.out({ batterId: 'p1', side: 'away', basesBefore: [null, null, { name: 'R', id: 'r' }] }),
+      // bases empty -> ignored
+      F.homer({ batterId: 'p1', side: 'away', basesBefore: [null, null, null] }),
+      // runner only on 1st -> not scoring position -> ignored
+      F.single({ batterId: 'p1', side: 'away', basesBefore: [{ name: 'R', id: 'r' }, null, null] }),
+      // no snapshot -> ignored
+      F.single({ batterId: 'p1', side: 'away' }),
+    ] })],
+  });
+  const r = Stats.rispBatting('p1');
+  assert.equal(r.ab, 2, 'two RISP at-bats');
+  assert.equal(r.h, 1, 'one RISP hit');
+  assert.equal(Stats.avg(r), 0.5);
+});
+
 test('milestones surface achieved career marks', () => {
   const events = [];
   for (let i = 0; i < 5; i++) events.push(F.homer({ batterId: 'p1', side: 'away' }));

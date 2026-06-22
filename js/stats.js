@@ -245,6 +245,23 @@ export const Stats = (()=>{
   function careerBatting(playerId){ return playerBatting(playerId, true, null); }
   function careerPitching(playerId){ return playerPitching(playerId, true, null); }
 
+  // Batting with Runners In Scoring Position — derived from each play's
+  // basesBefore snapshot (a runner on 2nd or 3rd when the PA started).
+  function rispBatting(playerId, opts={}){
+    const {seasonId=null, includeLive=true}=opts;
+    const s=Store.get();
+    let games=[...s.history];
+    if(includeLive && s.game) games.push(s.game);
+    if(seasonId) games=games.filter(g=>g.seasonId===seasonId);
+    const b=blankBat();
+    games.forEach(g=>g.events.forEach(ev=>{
+      if(ev.batterId!==playerId) return;
+      const bb=ev.basesBefore; if(!bb) return;          // need the snapshot
+      if(bb[1]!=null || bb[2]!=null) accumBat(b, ev);   // runner on 2B or 3B
+    }));
+    return b;
+  }
+
   // Per-game log for a player, newest first: each game they batted or pitched
   // in, with opponent + result. opts: {seasonId, includeLive, limit}.
   function gameLog(playerId, opts={}){
@@ -374,7 +391,7 @@ export const Stats = (()=>{
   return { blankBat, blankPitch, blankField, avg, obp, slg, ops, era, whip, ipStr,
            league, playerBatting, playerPitching, leaders, pitchLeaders, leaderTable, resolve,
            sprayData, sprayCount, fieldLeaders,
-           seasonBreakdown, careerBatting, careerPitching, milestones, gameBox, gameLog };
+           seasonBreakdown, careerBatting, careerPitching, rispBatting, milestones, gameBox, gameLog };
 })();
 
 /* ============================================================

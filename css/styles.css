@@ -1163,6 +1163,11 @@ button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,i
   border:1px solid var(--line);box-shadow:var(--shadow)}
 .recap-text{font-size:14px;line-height:1.55;color:var(--ink)}
 .recap-text.gen{color:var(--ink-dim);font-style:italic;display:flex;align-items:center;gap:8px}
+.risp-line{margin:10px 18px 0;padding:9px 14px;border-radius:10px;background:var(--panel-2);
+  border:1px solid var(--line);font-size:13px;color:var(--ink-dim);font-weight:700;
+  font-family:var(--font-num);display:flex;align-items:center;gap:8px}
+.risp-line b{font-size:16px;color:var(--clay)}
+.risp-line span{color:var(--ink-faint);font-weight:600}
 
 /* ---- Account & roles ---- */
 .acct-card{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);

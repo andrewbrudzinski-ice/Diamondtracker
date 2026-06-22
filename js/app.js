@@ -1668,7 +1668,9 @@ function openPlayerCard(teamId,pid){
     <div class="ratebar">
       ${rateCell('AVG',fmt3(Stats.avg(b)))}${rateCell('OBP',fmt3(Stats.obp(b)))}
       ${rateCell('SLG',fmt3(Stats.slg(b)))}${rateCell('OPS',fmt3(Stats.ops(b)))}
-    </div>`
+    </div>
+    ${(()=>{ const r=Stats.rispBatting(pid); return r.ab>0?`
+      <div class="risp-line">With RISP <b>${fmt3(Stats.avg(r))}</b> <span>${r.h}-for-${r.ab}${r.rbi?` · ${r.rbi} RBI`:''}</span></div>`:''; })()}`
     : `<div class="tcard-note">Batting &amp; pitching stats appear here once this player records an at-bat in a scored game.</div>`;
 
   // pitching line (only if they've pitched)

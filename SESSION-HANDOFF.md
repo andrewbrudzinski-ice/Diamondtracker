@@ -270,7 +270,10 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   app.js rasterizes it (canvas) → Web Share API or download. "📸 Share result" on the box score.
 - ~~AI season story~~ **DONE** — `AI.seasonPrompt`/`seasonStory`; "✨ Write season story" on the
   Awards view per season (`enhanceSeasonStory`, cached as `season.story`/`storyAI`).
-- Smaller: pitch counts; situational (RISP) splits. Push notifications (needs a server).
+- ~~situational (RISP) splits~~ **DONE** — `Stats.rispBatting()` (derived from each play's
+  `basesBefore`); "With RISP" line on the player card.
+- Smaller: pitch counts (needs an engine change — only taken pitches emit events today). Push
+  notifications (needs a server/service-worker).
 - ~~Phase C self-service RSVPs~~ **DONE** — `js/rsvp.js` + `supabase/rsvp.sql`: player-writable
   `diamondtracker_claims` (account↔player) and `diamondtracker_rsvps` tables (RLS `auth.uid()=
   user_id`). UI: "Claim your player" in Account; "Your RSVP" In/Maybe/Out on each event (works
