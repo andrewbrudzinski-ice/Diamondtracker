@@ -275,8 +275,15 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
 - ~~pitch counts~~ **DONE** — `pushEvent` stamps `ev.pitches` (balls+strikes+1 for a ball in
   play; manual walk/K shortcuts can undercount); `Stats` sums `pitches`; shown as **P** in the
   box-score pitching table + player-card pitching line.
-- Push notifications (needs a server/service-worker) — the one remaining idea outside the
-  no-backend model.
+- ~~Push notifications~~ **DONE (opt-in)** — `js/push.js` + `sw.js` push handlers +
+  `supabase/push.sql` + `supabase/functions/notify` (Deno Edge Function, web-push). Triggers on
+  game start/final from the writer's device; More → 🔔 Notifications to enable. Pure helpers
+  tested; browser/function paths need a real device + deploy (`docs/PUSH.md`).
+
+### Everything from the roadmap + idea list has shipped.
+Remaining are deeper/infra extensions only (scheduled reminders via cron, richer notification
+targeting, true per-pitch logging). The app + all opt-in cloud features are documented in
+`docs/` and `supabase/`; live verification needs a Supabase project + HTTPS browser.
 - ~~Phase C self-service RSVPs~~ **DONE** — `js/rsvp.js` + `supabase/rsvp.sql`: player-writable
   `diamondtracker_claims` (account↔player) and `diamondtracker_rsvps` tables (RLS `auth.uid()=
   user_id`). UI: "Claim your player" in Account; "Your RSVP" In/Maybe/Out on each event (works
