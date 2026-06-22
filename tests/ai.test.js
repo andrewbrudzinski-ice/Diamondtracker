@@ -62,6 +62,19 @@ test('recapPrompt includes the final and standouts', () => {
   assert.match(prompt, /Standouts: Pat 3-4, 2 HR; Sam 2-3/);
 });
 
+test('seasonPrompt folds in the record, champion and awards', () => {
+  const { prompt, maxTokens } = AI.seasonPrompt({
+    season: 'Season 1', games: 18, leader: 'Aces (12-6)', champion: 'Aces',
+    awards: [{ title: 'MVP', name: 'Pat' }, { title: 'Pitcher of the Year', name: 'Sam' }],
+  });
+  assert.match(prompt, /Season: Season 1/);
+  assert.match(prompt, /Games played: 18/);
+  assert.match(prompt, /Champion: Aces/);
+  assert.match(prompt, /MVP: Pat/);
+  assert.match(prompt, /Pitcher of the Year: Sam/);
+  assert.equal(maxTokens, 700);
+});
+
 test('complete posts to the Claude API with the right model, key and browser header', async () => {
   AI.writeConfig({ enabled: true, apiKey: 'sk-ant-secret' });
   const cap = {};

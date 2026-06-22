@@ -1175,6 +1175,51 @@ function renderStats(){
 function setStatsMode(m){ statsMode=m; render(); }
 function setStatsSeason(id){ statsSeasonId=id; render(); }
 
+/* ---- AI season story (Awards view, per season) ---- */
+function aiSeasonContext(seasonId){
+  const s=Store.get();
+  const season=(s.seasons||[]).find(x=>x.id===seasonId);
+  const standings=Standings.compute(seasonId);
+  const games=(s.history||[]).filter(g=>!seasonId||g.seasonId===seasonId).length;
+  const top=standings[0];
+  const leader=top?`${top.name} (${top.w}-${top.l}${top.t?'-'+top.t:''})`:'';
+  const awards=Awards.seasonAwards(seasonId).map(a=>({title:a.title, name:a.name}));
+  let champion='';
+  (s.tournaments||[]).forEach(t=>{ if((!seasonId||t.seasonId===seasonId)&&t.champion){
+    const tm=(s.teams||[]).find(x=>x.id===t.champion); if(tm) champion=tm.name; } });
+  return { season:season?season.name:'Season', games, leader, champion, awards };
+}
+async function enhanceSeasonStory(seasonId){
+  if(!AI.isConfigured()){ openAiSheet(); return; }
+  const season=(Store.get().seasons||[]).find(x=>x.id===seasonId);
+  if(!season){ toast('Pick a season first'); return; }
+  season._storyGenerating=true; render();
+  let text=null;
+  try{ text=await AI.seasonStory(aiSeasonContext(seasonId)); }
+  catch(e){ console.warn('AI season story failed',e); toast('Story failed — check AI settings'); }
+  const cur=(Store.get().seasons||[]).find(x=>x.id===seasonId);
+  if(cur){ cur._storyGenerating=false; if(text){ cur.story=text; cur.storyAI=true; } }
+  Store.commit(); render();
+}
+function seasonStoryBlock(){
+  if(!statsSeasonId){
+    return AI.isConfigured()
+      ? `<div class="recap-card"><div class="recap-text" style="color:var(--ink-dim)">Pick a season above to write its story.</div></div>`
+      : '';
+  }
+  const season=(Store.get().seasons||[]).find(x=>x.id===statsSeasonId); if(!season) return '';
+  const gen=season._storyGenerating, has=!!season.story;
+  if(!has && !AI.isConfigured() && !gen) return '';
+  const body = gen
+    ? `<div class="recap-text gen"><span class="ai-dots"><i></i><i></i><i></i></span> Writing the season story…</div>`
+    : (has?`<div class="recap-text">${esc(season.story)}${season.storyAI?`<span class="ai-badge" title="Written by Claude">✨ AI</span>`:''}</div>`:'');
+  const btn = (AI.isConfigured() && !gen)
+    ? `<button class="ai-regen" onclick="enhanceSeasonStory('${statsSeasonId}')">✨ ${has?'Regenerate story':'Write season story'}</button>`
+    : '';
+  if(!body && !btn) return '';
+  return `<div class="sec"><h3>Season Story</h3></div><div class="recap-card">${body}${btn}</div>`;
+}
+
 function renderAwards(){
   const awards = Awards.seasonAwards(statsSeasonId);
   const records = Awards.teamRecords(statsSeasonId);
@@ -1192,6 +1237,7 @@ function renderAwards(){
   };
 
   let html = `<div class="scroll stagger" style="padding-bottom:24px">`;
+  html += seasonStoryBlock();
 
   if(awards.length){
     html += `<div class="sec"><h3>Season Awards${scope}</h3></div>`;
@@ -3145,6 +3191,7 @@ Object.assign(window, {
   Sync, initSync, openSyncSheet, saveSync, disconnectSync,
   AI, aiMvpContext, enhanceMvpSummary, regenerateMvpSummary, openAiSheet, saveAi, disableAi,
   aiRecapContext, enhanceGameRecap, recapBlock,
+  aiSeasonContext, enhanceSeasonStory, seasonStoryBlock,
   Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
   openRoleManager, renderRoleList, changeRole,
   RSVP, openClaimPlayer, claimMyPlayer, unclaimPlayer, fillSelfRsvp, toggleMyRsvp,

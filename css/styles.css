@@ -1162,6 +1162,7 @@ button:focus-visible,.btn:focus-visible,.tool:focus-visible,.cta:focus-visible,i
 .recap-card{margin:10px 14px 4px;padding:14px;border-radius:var(--radius);background:var(--panel);
   border:1px solid var(--line);box-shadow:var(--shadow)}
 .recap-text{font-size:14px;line-height:1.55;color:var(--ink)}
+.recap-text.gen{color:var(--ink-dim);font-style:italic;display:flex;align-items:center;gap:8px}
 
 /* ---- Account & roles ---- */
 .acct-card{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);

@@ -43,7 +43,8 @@ accounts/roles in **Phase C**.
 - Wiring: `js/app.js` — `setGameMvp()` writes the template synchronously, then
   `enhanceMvpSummary()` upgrades it async via `Store.commit()` + re-render.
   `aiMvpContext()` extracts the fact context from the box score.
-- **Game recaps are wired too:** the box score shows a "✨ Write game recap" button
-  (`enhanceGameRecap` → `AI.gameRecap`), cached on the game as `recap`/`recapAI`.
-  A **season story** (aggregating a season's games) is the remaining follow-up —
-  `recapPrompt` generalizes to it.
+- **Game recaps** are wired on the box score ("✨ Write game recap" → `enhanceGameRecap`
+  → `AI.gameRecap`, cached as `recap`/`recapAI`).
+- **Season stories** are wired on the Awards view per season ("✨ Write season story" →
+  `enhanceSeasonStory` → `AI.seasonStory`, cached on the season as `story`/`storyAI`).
+  `aiSeasonContext` feeds it the record, champion, and award winners.
