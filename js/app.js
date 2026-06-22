@@ -11,6 +11,7 @@ import { Tournament } from './tournament.js';
 import { Sync } from './sync.js';
 import { AI } from './ai.js';
 import { Auth } from './auth.js';
+import { RSVP } from './rsvp.js';
 
 const ord = n => n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th');
 const toast = (()=>{ let t; return msg=>{
@@ -2677,9 +2678,36 @@ function openEventDetail(id){
       <div class="ed-when">${dt.dow}, ${dt.date} · ${dt.time}</div>
       ${e.location?`<div class="ed-meta">📍 ${esc(e.location)}</div>`:''}
       ${e.notes?`<div class="ed-notes">${esc(e.notes)}</div>`:''}
+      ${Auth.current().signedIn?`<div id="selfRsvp"><div class="empty-sm">Loading your RSVP…</div></div>`:''}
       ${rsvpSection}
       <button class="cta ghost" style="margin-top:14px" onclick="openEventSheet('${e.id}')">Edit Event</button>
     </div>`);
+  if(Auth.current().signedIn) fillSelfRsvp(id);
+}
+// Self-service RSVP block (signed-in users RSVP for themselves via the
+// player-writable table — works even for read-only player/fan roles).
+async function fillSelfRsvp(eventId){
+  const host=document.getElementById('selfRsvp'); if(!host) return;
+  let rows=[];
+  try{ rows=await RSVP.listRsvps(eventId); }catch(e){ host.innerHTML=''; return; }
+  const mine=rows.find(r=>r.user_id===RSVP.uid());
+  const st=mine?mine.status:'';
+  const n=s=>rows.filter(r=>r.status===s).length;
+  host.innerHTML=`
+    <div class="sec" style="padding:14px 2px 6px"><h3>Your RSVP</h3></div>
+    <div class="self-rsvp">
+      <button class="srb in ${st==='in'?'on':''}" onclick="toggleMyRsvp('${eventId}','in')">✓ In</button>
+      <button class="srb maybe ${st==='maybe'?'on':''}" onclick="toggleMyRsvp('${eventId}','maybe')">? Maybe</button>
+      <button class="srb out ${st==='out'?'on':''}" onclick="toggleMyRsvp('${eventId}','out')">✕ Out</button>
+    </div>
+    ${rows.length?`<div class="rsvp-note" style="padding:8px 4px 0">${n('in')} in · ${n('maybe')} maybe · ${n('out')} out · self check-ins</div>`:''}`;
+}
+function toggleMyRsvp(eventId, status){
+  const btn=(typeof event!=='undefined')&&event.currentTarget;
+  const clear=btn&&btn.classList.contains('on');
+  RSVP.setMyRsvp(eventId, clear?null:status)
+    .then(()=>{ toast(clear?'RSVP cleared':'RSVP saved'); fillSelfRsvp(eventId); })
+    .catch(e=>{ console.warn(e); toast('RSVP failed'); });
 }
 function rsvp(eventId,playerId,status){
   const e=Schedule.byId(eventId);
@@ -2747,11 +2775,12 @@ async function initSync(opts={}){
     Store.setRemote(Sync.makeRemote(client, cfg.room));
     await Store.hydrate();           // pull shared state, then live updates flow via subscribe
     await Auth.init(client);         // accounts/roles ride the same Supabase project
+    RSVP.init(client, ()=>{ const u=Auth.current().user; return u?u.id:null; });
     _syncState='live';
     if(opts.toast) toast('Live Sync connected');
   }catch(e){
     console.warn('Live Sync failed; staying offline',e);
-    Store.setRemote(null); Auth.detach(); _syncState='error';
+    Store.setRemote(null); Auth.detach(); RSVP.detach(); _syncState='error';
     if(opts.toast) toast('Sync failed — working offline');
   }
   render();
@@ -2792,7 +2821,7 @@ function saveSync(){
 function disconnectSync(){
   const cfg=Sync.readConfig()||{};
   Sync.writeConfig({...cfg, enabled:false});   // keep creds for convenience, just disable
-  Store.setRemote(null); Auth.detach(); _syncState='offline';
+  Store.setRemote(null); Auth.detach(); RSVP.detach(); _syncState='offline';
   Sheet.close(); toast('Disconnected — working offline'); render();
 }
 
@@ -2816,6 +2845,7 @@ function openAccountSheet(){
           : '👁 Read-only — you can follow live games but not edit them'}</div>
       </div>
       ${Auth.isAdmin(a.role)?`<button class="cta" onclick="openRoleManager()">Manage roles</button>`:''}
+      <button class="cta ghost" style="margin-top:10px" onclick="openClaimPlayer()">🧢 Claim your player</button>
       <button class="cta ghost" style="margin-top:10px" onclick="signOutNow()">Sign out</button>
       <div class="rsvp-note" style="padding:14px 4px 0">New sign-ins start as <b>fan</b>. ${Auth.isAdmin(a.role)?'As an admin you can change roles below.':'Ask an admin to change your role.'}</div>`;
   } else {
@@ -2838,6 +2868,33 @@ async function sendMagicLink(){
   }catch(e){ console.warn(e); toast('Could not send link — check Live Sync'); }
 }
 async function signOutNow(){ await Auth.signOut(); Sheet.close(); toast('Signed out'); render(); }
+
+/* ---- Claim a roster player (links account -> player) ---- */
+async function openClaimPlayer(){
+  const teams=Store.get().teams||[];
+  const players=[]; teams.forEach(t=>t.players.forEach(p=>players.push({...p, teamName:t.name, teamId:t.id, color:t.color})));
+  let claim=null; try{ claim=await RSVP.myClaim(); }catch(e){ console.warn(e); }
+  Sheet.open(`
+    <div class="sheet-head"><h3>🧢 Claim Your Player</h3><button class="x" onclick="Sheet.close()">×</button></div>
+    <div class="sheet-body">
+      <p style="color:var(--ink-dim);font-size:13px;line-height:1.5;margin:0 0 12px">
+        Pick the roster player that's you. Your event RSVPs get linked to them.</p>
+      ${claim?`<button class="cta ghost" style="margin-bottom:10px" onclick="unclaimPlayer()">Unlink current player</button>`:''}
+      ${players.length?players.map(p=>`
+        <div class="role-row" onclick="claimMyPlayer('${p.id}','${p.teamId}')">
+          <span class="avatar" style="width:34px;height:34px">${Crest.player(p.name,p.num,p.color,false)}</span>
+          <div class="role-email">${esc(p.name)} <small style="color:var(--ink-dim)">· ${esc(p.teamName)}</small></div>
+          ${claim&&claim.player_id===p.id?`<span class="role-chip scorekeeper">YOU</span>`:''}
+        </div>`).join(''):`<div class="empty-sm">No players yet — add a team first.</div>`}
+    </div>`);
+}
+async function claimMyPlayer(playerId, teamId){
+  try{ await RSVP.claimPlayer(playerId, teamId); Sheet.close(); toast('Linked to your player'); }
+  catch(e){ console.warn(e); toast('Could not link — sign in first'); }
+}
+async function unclaimPlayer(){
+  try{ await RSVP.unclaim(); Sheet.close(); toast('Unlinked'); }catch(e){ console.warn(e); }
+}
 
 /* ---- Admin: role editor ---- */
 async function openRoleManager(){
@@ -3043,6 +3100,7 @@ Object.assign(window, {
   aiRecapContext, enhanceGameRecap, recapBlock,
   Auth, blockedByRole, openAccountSheet, sendMagicLink, signOutNow,
   openRoleManager, renderRoleList, changeRole,
+  RSVP, openClaimPlayer, claimMyPlayer, unclaimPlayer, fillSelfRsvp, toggleMyRsvp,
   fanLink, copyFanLink, bootFan, renderFan, dotRow,
 });
 

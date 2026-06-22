@@ -268,9 +268,12 @@ courtesy-runner / pitch-arc rules are tracked & displayed but not hard-enforced.
   tappable **Game Log** section on the player card (date · opp · result · AB/H/HR/RBI).
 - **AI season story** (aggregate a season → narrative); **share card** (export box score as an
   image); pitch counts; situational (RISP) splits.
-- Phase C: **self-service RSVPs** (needs auth-account ↔ roster-player linking — RSVPs are keyed
-  by roster `playerId` today); **push notifications** (needs a server/service-worker).
-  Game-only sync mode (vs whole-state).
+- ~~Phase C self-service RSVPs~~ **DONE** — `js/rsvp.js` + `supabase/rsvp.sql`: player-writable
+  `diamondtracker_claims` (account↔player) and `diamondtracker_rsvps` tables (RLS `auth.uid()=
+  user_id`). UI: "Claim your player" in Account; "Your RSVP" In/Maybe/Out on each event (works
+  for read-only roles). Mock-tested.
+- Phase C: **push notifications** (needs a server/service-worker). Game-only sync mode (vs
+  whole-state).
 
 ---
 

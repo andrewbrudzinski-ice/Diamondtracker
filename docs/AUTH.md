@@ -75,10 +75,23 @@ member with a role dropdown; changing one writes the new role immediately
 (enforced by the `profiles admin update` RLS policy, so only admins can do it and
 no one can self-promote).
 
+## Self-service RSVPs (players check themselves in)
+
+Players are read-only on the shared state, so their RSVPs live in their own
+player-writable tables (each user owns their rows). One-time: run
+[`supabase/rsvp.sql`](../supabase/rsvp.sql) after `auth.sql`.
+
+1. **Link your account to your roster player:** More → 👤 Account → **🧢 Claim your
+   player** → pick yourself.
+2. **RSVP:** open any event (Schedule) → **Your RSVP** → In / Maybe / Out. This
+   works even for `player`/`fan` roles (it doesn't write the shared state). The
+   scorekeeper sees the self check-in tally on the event.
+
+`js/rsvp.js` (`RSVP`) wraps the claims/rsvps tables over the shared client and is
+mock-tested in `tests/rsvp.test.js`.
+
 ## Not yet included (follow-ups)
 
-- Self-service **RSVPs** by players — needs linking an auth account to a roster
-  player (today RSVPs are keyed by roster `playerId`, accounts by auth user).
 - **Push notifications** — deferred; needs a service worker + push provider
   (a server piece), out of scope for the no-backend build today.
 
